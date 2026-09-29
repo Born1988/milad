@@ -45,13 +45,19 @@ pip install -r requirements.txt
 python3 plane_dodge.py
 ```
 
-Or build a standalone executable (no Python install needed to run it):
+Or build a standalone executable (no Python install needed to run it
+afterwards). PyInstaller can't cross-compile, so build on the OS you
+want the executable for:
 
+**Linux / macOS:**
 ```bash
 pip install pyinstaller
 pyinstaller --onefile --name plane_dodge plane_dodge.py
 ./dist/plane_dodge
 ```
+
+**Windows:** double-click `build_windows.bat` (or run it from a
+terminal with Python already installed), then run `dist\plane_dodge.exe`.
 
 ## Controls
 
