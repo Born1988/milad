@@ -109,6 +109,29 @@ class SoundBank:
         self.sounds["click"] = pygame.sndarray.make_sound(
             _sweep_tone(500, 900, 0.06, wave="square", volume=0.25, release=0.7)
         )
+        self.sounds["pickup"] = pygame.sndarray.make_sound(
+            self._sequence([(660, 0.06), (990, 0.08)])
+        )
+        self.sounds["shield_on"] = pygame.sndarray.make_sound(
+            _sweep_tone(300, 1200, 0.28, wave="sine", volume=0.3, release=0.8)
+        )
+        self.sounds["shield_hit"] = pygame.sndarray.make_sound(
+            self._mix(
+                _sweep_tone(900, 1400, 0.12, wave="sine", volume=0.3, release=0.8),
+                _noise_burst(0.12, volume=0.2, lowpass_window=4, release=0.8),
+            )
+        )
+        self.sounds["life_lost"] = pygame.sndarray.make_sound(
+            self._mix(
+                _noise_burst(0.35, volume=0.45, lowpass_window=10, release=0.9),
+                _sweep_tone(420, 90, 0.35, wave="triangle", volume=0.3, release=0.9),
+            )
+        )
+        self.sounds["stage_clear"] = pygame.sndarray.make_sound(
+            self._sequence([
+                (523, 0.1), (659, 0.1), (784, 0.1), (988, 0.1), (1318, 0.24),
+            ])
+        )
 
     @staticmethod
     def _mix(a, b):
