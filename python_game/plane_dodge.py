@@ -1,8 +1,10 @@
 """Plane Dodge - an endless plane-dodging arcade game built with pygame.
 
 Steer the plane left and right (arrow keys / A-D, or drag with the mouse)
-to weave between falling meteors. Survive as long as you can; the game
-speeds up and meteors grow denser the longer you last.
+to weave between falling meteors while your plane auto-fires glowing
+tracer shots to blast them out of the sky. Survive as long as you can;
+the game speeds up, meteors grow denser, and the sky shifts through
+color phases the longer you last.
 
 Run with:  python3 plane_dodge.py
 """
@@ -15,18 +17,29 @@ import sys
 
 import pygame
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import sound as sound_module
+
 WIDTH, HEIGHT = 480, 800
 FPS = 60
 HIGHSCORE_FILE = os.path.join(os.path.dirname(__file__), "highscore.json")
 
-SKY_TOP = (10, 20, 46)
-SKY_MID = (24, 58, 110)
-SKY_BOTTOM = (54, 120, 190)
 WHITE = (255, 255, 255)
 GOLD = (255, 212, 121)
 ORANGE = (255, 157, 61)
+CYAN = (120, 220, 255)
 DANGER = (239, 68, 68)
 DANGER_DARK = (127, 29, 29)
+
+# Slowly-cycling sky palettes: (top, mid, bottom). The game blends between
+# consecutive palettes over time so the backdrop never looks static.
+SKY_PALETTES = [
+    ((10, 20, 46), (24, 58, 110), (54, 120, 190)),   # dusk blue
+    ((18, 10, 40), (72, 30, 96), (196, 90, 110)),    # violet sunset
+    ((6, 8, 28), (18, 24, 70), (40, 70, 130)),        # deep night
+    ((8, 24, 34), (14, 70, 88), (58, 160, 150)),      # aurora teal
+]
+PALETTE_DURATION = 22.0
 
 
 def lerp(a, b, t):
@@ -35,6 +48,16 @@ def lerp(a, b, t):
 
 def lerp_color(c1, c2, t):
     return tuple(int(lerp(c1[i], c2[i], t)) for i in range(3))
+
+
+def sky_colors(elapsed):
+    n = len(SKY_PALETTES)
+    idx = int(elapsed // PALETTE_DURATION) % n
+    nxt = (idx + 1) % n
+    t = (elapsed % PALETTE_DURATION) / PALETTE_DURATION
+    t = t * t * (3 - 2 * t)  # smoothstep
+    a, b = SKY_PALETTES[idx], SKY_PALETTES[nxt]
+    return tuple(lerp_color(a[i], b[i], t) for i in range(3))
 
 
 def load_highscore():
@@ -100,16 +123,18 @@ class Cloud:
 
 
 class Particle:
-    __slots__ = ("x", "y", "vx", "vy", "life", "max_life", "color", "size")
+    __slots__ = ("x", "y", "vx", "vy", "life", "max_life", "color", "size", "gravity")
 
-    def __init__(self, x, y, vx, vy, life, color, size):
+    def __init__(self, x, y, vx, vy, life, color, size, gravity=0.0):
         self.x, self.y, self.vx, self.vy = x, y, vx, vy
         self.life = life
         self.max_life = life
         self.color = color
         self.size = size
+        self.gravity = gravity
 
     def update(self, dt):
+        self.vy += self.gravity * dt
         self.x += self.vx * dt
         self.y += self.vy * dt
         self.life -= dt
@@ -124,6 +149,76 @@ class Particle:
         surf.blit(s, (self.x - size, self.y - size))
 
 
+class ShockRing:
+    """An expanding, fading ring used for explosion punch."""
+
+    __slots__ = ("x", "y", "radius", "max_radius", "life", "max_life", "color", "width")
+
+    def __init__(self, x, y, max_radius, life, color, width=4):
+        self.x, self.y = x, y
+        self.radius = max_radius * 0.15
+        self.max_radius = max_radius
+        self.life = life
+        self.max_life = life
+        self.color = color
+        self.width = width
+
+    def update(self, dt):
+        t = 1 - max(0.0, self.life / self.max_life)
+        self.radius = lerp(self.max_radius * 0.15, self.max_radius, t)
+        self.life -= dt
+        return self.life > 0
+
+    def draw(self, surf):
+        t = max(0.0, self.life / self.max_life)
+        alpha = int(220 * t)
+        w = max(1, int(self.width * t + 1))
+        size = int(self.radius * 2 + w * 2)
+        s = pygame.Surface((size, size), pygame.SRCALPHA)
+        pygame.draw.circle(s, (*self.color, alpha), (size // 2, size // 2), self.radius, width=w)
+        surf.blit(s, (self.x - size / 2, self.y - size / 2))
+
+
+class ScorePopup:
+    __slots__ = ("x", "y", "vy", "life", "max_life", "text", "color")
+
+    def __init__(self, x, y, text, color):
+        self.x, self.y = x, y
+        self.vy = -70
+        self.life = 0.7
+        self.max_life = 0.7
+        self.text = text
+        self.color = color
+
+    def update(self, dt):
+        self.y += self.vy * dt
+        self.vy *= 0.94
+        self.life -= dt
+        return self.life > 0
+
+
+class Bullet:
+    __slots__ = ("x", "y", "vy", "radius")
+
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+        self.vy = -640
+        self.radius = 5
+
+    def update(self, dt):
+        self.y += self.vy * dt
+        return self.y > -30
+
+    def draw(self, surf):
+        glow = pygame.Surface((self.radius * 6, self.radius * 8), pygame.SRCALPHA)
+        gw, gh = glow.get_size()
+        pygame.draw.ellipse(glow, (*CYAN, 70), (0, 0, gw, gh))
+        surf.blit(glow, (self.x - gw / 2, self.y - gh / 2))
+        pygame.draw.line(surf, CYAN, (self.x, self.y - 12), (self.x, self.y + 10), 3)
+        pygame.draw.circle(surf, WHITE, (int(self.x), int(self.y - 12)), 3)
+
+
 class Meteor:
     def __init__(self, x, y, size):
         self.x = x
@@ -135,6 +230,8 @@ class Meteor:
         self.wobble_speed = random.uniform(1.5, 3.0)
         self.wobble_amp = random.uniform(6, 16)
         self.base_x = x
+        self.grazed = False
+        self.hp = 1 if size < 62 else 2
 
     def update(self, dt, fall_speed):
         self.y += fall_speed * dt
@@ -164,9 +261,10 @@ class Meteor:
             points.append((px, py))
         pygame.draw.polygon(body, DANGER, points)
         pygame.draw.polygon(body, DANGER_DARK, points, width=max(2, int(self.size * 0.05)))
-        # crater highlights
         pygame.draw.circle(body, (185, 45, 45), (cx - r * 0.25, cy - r * 0.2), r * 0.22)
         pygame.draw.circle(body, (185, 45, 45), (cx + r * 0.3, cy + r * 0.15), r * 0.14)
+        if self.hp > 1:
+            pygame.draw.circle(body, (255, 200, 90), (cx, cy), r * 0.28)
 
         rotated = pygame.transform.rotate(body, self.angle)
         rect = rotated.get_rect(center=(self.x, self.y))
@@ -256,6 +354,7 @@ class Game:
         pygame.display.set_caption("پرواز هواپیما | Plane Dodge")
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
         self.clock = pygame.time.Clock()
+        self.sound = sound_module.SoundBank()
 
         self.font_big = self._font(64, bold=True)
         self.font_mid = self._font(30, bold=True)
@@ -266,8 +365,13 @@ class Game:
         self.clouds_far = [Cloud() for _ in range(4)]
         self.clouds_near = [Cloud() for _ in range(3)]
         self.particles = []
+        self.rings = []
+        self.popups = []
         self.meteors = []
+        self.bullets = []
         self.plane = Plane()
+
+        self.vignette = self._build_vignette()
 
         self.best = load_highscore()
         self.reset()
@@ -286,9 +390,25 @@ class Game:
                 continue
         return pygame.font.Font(None, size)
 
+    def _build_vignette(self):
+        surf = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        cx, cy = WIDTH / 2, HEIGHT / 2
+        max_dist = math.hypot(cx, cy)
+        step = 6
+        for y in range(0, HEIGHT, step):
+            for x in range(0, WIDTH, step):
+                d = math.hypot(x - cx, y - cy) / max_dist
+                a = max(0, int((d - 0.55) * 190))
+                if a > 0:
+                    pygame.draw.rect(surf, (0, 0, 0, min(a, 140)), (x, y, step, step))
+        return surf
+
     def reset(self):
         self.meteors.clear()
         self.particles.clear()
+        self.rings.clear()
+        self.popups.clear()
+        self.bullets.clear()
         self.plane.x = self.plane.target_x = WIDTH / 2
         self.elapsed = 0.0
         self.score = 0
@@ -297,6 +417,11 @@ class Game:
         self.spawn_interval = 1.05
         self.combo_flash = 0.0
         self.near_misses = 0
+        self.fire_timer = 0.0
+        self.fire_interval = 0.32
+        self.combo = 0
+        self.combo_timer = 0.0
+        self.level = 0
 
     def spawn_meteor(self):
         size = random.uniform(46, 78)
@@ -318,7 +443,40 @@ class Game:
                          size=random.uniform(3, 6))
             )
 
-    def explode(self, x, y):
+    def fire_bullet(self):
+        nx, ny = self.plane.nose()
+        self.bullets.append(Bullet(nx, ny - 6))
+        for _ in range(6):
+            angle = random.uniform(-0.5, 0.5) + math.pi * 1.5
+            speed = random.uniform(60, 160)
+            self.particles.append(
+                Particle(nx, ny, math.cos(angle) * speed, math.sin(angle) * speed,
+                          life=random.uniform(0.08, 0.16), color=CYAN, size=random.uniform(2, 4))
+            )
+        self.sound.play("shoot", volume=0.5)
+
+    def destroy_meteor(self, m, from_bullet=True):
+        self.meteors.remove(m)
+        color = ORANGE if from_bullet else DANGER
+        for _ in range(26):
+            angle = random.uniform(0, math.tau)
+            speed = random.uniform(60, 260)
+            self.particles.append(
+                Particle(m.x, m.y, math.cos(angle) * speed, math.sin(angle) * speed,
+                          life=random.uniform(0.3, 0.65), color=random.choice([DANGER, ORANGE, GOLD]),
+                          size=random.uniform(3, 7), gravity=40)
+            )
+        self.rings.append(ShockRing(m.x, m.y, m.size * 1.3, 0.4, ORANGE, width=5))
+        if from_bullet:
+            gain = 15 + self.combo * 5
+            self.score += gain
+            self.combo += 1
+            self.combo_timer = 1.1
+            self.popups.append(ScorePopup(m.x, m.y, f"+{gain}", GOLD))
+            self.sound.play("explosion", volume=0.35)
+        self.shake = max(self.shake, 6)
+
+    def explode_plane(self, x, y):
         for _ in range(46):
             angle = random.uniform(0, math.tau)
             speed = random.uniform(80, 420)
@@ -328,8 +486,10 @@ class Game:
                           life=random.uniform(0.4, 0.9), color=color,
                           size=random.uniform(3, 8))
             )
-        self.shake = 18
+        self.rings.append(ShockRing(x, y, 140, 0.6, DANGER, width=8))
+        self.shake = 20
         self.flash = 1.0
+        self.sound.play("crash", volume=0.8)
 
     def handle_input(self):
         keys = pygame.key.get_pressed()
@@ -351,37 +511,73 @@ class Game:
         self.fall_speed = 210 + self.elapsed * 5.5
         self.spawn_interval = max(0.42, 1.05 - self.elapsed * 0.008)
 
+        new_level = int(self.elapsed // 12)
+        if new_level != self.level:
+            self.level = new_level
+            self.popups.append(ScorePopup(WIDTH / 2, HEIGHT * 0.3, f"LEVEL {self.level + 1}", CYAN))
+            self.sound.play("level_up", volume=0.6)
+            self.fire_interval = max(0.16, 0.32 - self.level * 0.02)
+
         self.spawn_timer += self.dt
         if self.spawn_timer >= self.spawn_interval:
             self.spawn_timer = 0
             self.spawn_meteor()
 
+        self.fire_timer += self.dt
+        if self.fire_timer >= self.fire_interval:
+            self.fire_timer = 0
+            self.fire_bullet()
+
+        if self.combo_timer > 0:
+            self.combo_timer -= self.dt
+            if self.combo_timer <= 0:
+                self.combo = 0
+
         for m in self.meteors:
             m.update(self.dt, self.fall_speed)
         self.meteors = [m for m in self.meteors if m.y - m.size < HEIGHT + 60]
 
-        self.emit_trail(self.dt)
+        for b in self.bullets:
+            b.update(self.dt)
+        self.bullets = [b for b in self.bullets if b.y > -30]
 
-        self.score = int(self.elapsed * 10)
+        for b in list(self.bullets):
+            for m in list(self.meteors):
+                if math.hypot(b.x - m.x, b.y - m.y) < m.radius() + b.radius:
+                    m.hp -= 1
+                    if b in self.bullets:
+                        self.bullets.remove(b)
+                    if m.hp <= 0:
+                        self.destroy_meteor(m, from_bullet=True)
+                    else:
+                        self.rings.append(ShockRing(b.x, b.y, 24, 0.2, CYAN, width=3))
+                    break
+
+        self.emit_trail(self.dt)
+        self.score += 0  # score also accrues from survival below
+        self.score = max(self.score, int(self.elapsed * 10))
 
         px, py = self.plane.x, self.plane.y
         plane_r = self.plane.width * 0.28
         for m in list(self.meteors):
             dist = math.hypot(px - m.x, py - m.y)
             if dist < plane_r + m.radius():
-                self.explode(px, py)
+                self.explode_plane(px, py)
                 self.state = "gameover"
                 if self.score > self.best:
                     self.best = self.score
                     save_highscore(self.best)
                 break
-            elif dist < plane_r + m.radius() + 22 and not hasattr(m, "_grazed"):
-                m._grazed = True
+            elif dist < plane_r + m.radius() + 22 and not m.grazed:
+                m.grazed = True
                 self.near_misses += 1
                 self.combo_flash = 0.25
+                self.sound.play("near_miss", volume=0.3)
 
     def update_particles(self):
         self.particles = [p for p in self.particles if p.update(self.dt)]
+        self.rings = [r for r in self.rings if r.update(self.dt)]
+        self.popups = [p for p in self.popups if p.update(self.dt)]
 
     def update_background(self):
         mult = 1.0 if self.state == "playing" else 0.4
@@ -393,13 +589,20 @@ class Game:
             c.update(self.dt, mult * 1.3)
 
     def draw_sky(self, surf):
+        top, mid, bottom = sky_colors(self.elapsed if self.state != "menu" else pygame.time.get_ticks() / 1000)
         for y in range(0, HEIGHT, 2):
             t = y / HEIGHT
             if t < 0.5:
-                color = lerp_color(SKY_TOP, SKY_MID, t / 0.5)
+                color = lerp_color(top, mid, t / 0.5)
             else:
-                color = lerp_color(SKY_MID, SKY_BOTTOM, (t - 0.5) / 0.5)
+                color = lerp_color(mid, bottom, (t - 0.5) / 0.5)
             pygame.draw.line(surf, color, (0, y), (WIDTH, y), 2)
+
+        sun_x, sun_y = WIDTH * 0.78, HEIGHT * 0.16
+        for r, a in ((120, 18), (80, 26), (46, 40)):
+            s = pygame.Surface((r * 2, r * 2), pygame.SRCALPHA)
+            pygame.draw.circle(s, (255, 230, 180, a), (r, r), r)
+            surf.blit(s, (sun_x - r, sun_y - r))
 
     def draw_hud(self, surf):
         score_text = self.font_big.render(str(self.score), True, WHITE)
@@ -408,17 +611,28 @@ class Game:
         surf.blit(shadow, (rect.x + 2, rect.y + 3))
         surf.blit(score_text, rect)
 
-        best_label = self.font_tiny.render("BEST", True, (255, 255, 255, 180))
+        best_label = self.font_tiny.render("BEST", True, (255, 255, 255))
         best_val = self.font_small.render(str(self.best), True, GOLD)
         surf.blit(best_label, (WIDTH - 90, 24))
         surf.blit(best_val, (WIDTH - 90, 42))
 
+        if self.combo >= 2:
+            combo_text = self.font_small.render(f"x{self.combo} COMBO", True, ORANGE)
+            surf.blit(combo_text, combo_text.get_rect(topleft=(16, 24)))
+
         if self.combo_flash > 0:
             self.combo_flash -= self.dt
             alpha = int(255 * min(1, self.combo_flash / 0.25))
-            near_text = self.font_small.render("NICE!", True, (*GOLD,))
+            near_text = self.font_small.render("NICE!", True, GOLD)
             near_text.set_alpha(alpha)
             surf.blit(near_text, near_text.get_rect(center=(WIDTH / 2, 110)))
+
+        for p in self.popups:
+            t = max(0.0, p.life / p.max_life)
+            f = self.font_small if len(p.text) <= 4 else self.font_mid
+            txt = f.render(p.text, True, p.color)
+            txt.set_alpha(int(255 * t))
+            surf.blit(txt, txt.get_rect(center=(p.x, p.y)))
 
     def draw_menu(self, surf):
         overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
@@ -426,26 +640,27 @@ class Game:
         surf.blit(overlay, (0, 0))
 
         title = self.font_big.render("PLANE DODGE", True, WHITE)
-        surf.blit(title, title.get_rect(center=(WIDTH / 2, HEIGHT * 0.32)))
+        surf.blit(title, title.get_rect(center=(WIDTH / 2, HEIGHT * 0.3)))
 
         subtitle_lines = [
             "با کلیدهای ← → یا A/D یا موس هدایت کن",
-            "از برخورد با شهاب‌سنگ‌های قرمز فرار کن",
+            "هواپیمات خودکار شلیک می‌کنه، شهاب‌سنگ‌ها رو منفجر کن",
+            "و از برخورد مستقیم فرار کن",
         ]
         for i, line in enumerate(subtitle_lines):
             t = self.font_small.render(line, True, (220, 226, 240))
-            surf.blit(t, t.get_rect(center=(WIDTH / 2, HEIGHT * 0.44 + i * 28)))
+            surf.blit(t, t.get_rect(center=(WIDTH / 2, HEIGHT * 0.42 + i * 27)))
 
         pulse = 0.5 + 0.5 * math.sin(pygame.time.get_ticks() / 300)
         btn_color = lerp_color(ORANGE, GOLD, pulse)
         btn_rect = pygame.Rect(0, 0, 260, 64)
-        btn_rect.center = (WIDTH / 2, HEIGHT * 0.62)
+        btn_rect.center = (WIDTH / 2, HEIGHT * 0.64)
         pygame.draw.rect(surf, btn_color, btn_rect, border_radius=32)
         btn_text = self.font_mid.render("START", True, (40, 20, 0))
         surf.blit(btn_text, btn_text.get_rect(center=btn_rect.center))
 
         best_text = self.font_small.render(f"Best: {self.best}", True, GOLD)
-        surf.blit(best_text, best_text.get_rect(center=(WIDTH / 2, HEIGHT * 0.72)))
+        surf.blit(best_text, best_text.get_rect(center=(WIDTH / 2, HEIGHT * 0.74)))
         self.start_btn_rect = btn_rect
 
     def draw_gameover(self, surf):
@@ -454,16 +669,16 @@ class Game:
         surf.blit(overlay, (0, 0))
 
         title = self.font_big.render("CRASHED", True, DANGER)
-        surf.blit(title, title.get_rect(center=(WIDTH / 2, HEIGHT * 0.3)))
+        surf.blit(title, title.get_rect(center=(WIDTH / 2, HEIGHT * 0.28)))
 
         score_text = self.font_mid.render(f"Score: {self.score}", True, WHITE)
-        surf.blit(score_text, score_text.get_rect(center=(WIDTH / 2, HEIGHT * 0.42)))
+        surf.blit(score_text, score_text.get_rect(center=(WIDTH / 2, HEIGHT * 0.4)))
 
         is_new_best = self.score >= self.best and self.score > 0
         best_color = GOLD if is_new_best else (200, 206, 220)
         label = "NEW BEST!" if is_new_best else f"Best: {self.best}"
         best_text = self.font_small.render(label, True, best_color)
-        surf.blit(best_text, best_text.get_rect(center=(WIDTH / 2, HEIGHT * 0.48)))
+        surf.blit(best_text, best_text.get_rect(center=(WIDTH / 2, HEIGHT * 0.46)))
 
         pulse = 0.5 + 0.5 * math.sin(pygame.time.get_ticks() / 300)
         btn_color = lerp_color(ORANGE, GOLD, pulse)
@@ -484,14 +699,20 @@ class Game:
         for c in self.clouds_near:
             c.draw(render_target)
 
+        for r in self.rings:
+            r.draw(render_target)
         for p in self.particles:
             p.draw(render_target)
 
         if self.state in ("playing", "gameover"):
+            for b in self.bullets:
+                b.draw(render_target)
             for m in self.meteors:
                 m.draw(render_target)
             if self.state == "playing" or self.shake > 0:
                 self.plane.draw(render_target)
+
+        render_target.blit(self.vignette, (0, 0))
 
         if self.state == "playing":
             self.draw_hud(render_target)
@@ -534,9 +755,11 @@ class Game:
                             self.state = "playing"
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     if self.state == "menu" and self.start_btn_rect.collidepoint(event.pos):
+                        self.sound.play("click")
                         self.reset()
                         self.state = "playing"
                     elif self.state == "gameover" and self.retry_btn_rect.collidepoint(event.pos):
+                        self.sound.play("click")
                         self.reset()
                         self.state = "playing"
 
