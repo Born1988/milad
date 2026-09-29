@@ -1,2 +1,5 @@
 python_game/highscore.json
 python_game/__pycache__/
+python_game/build/
+python_game/dist/
+python_game/*.spec

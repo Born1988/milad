@@ -35,13 +35,22 @@ a shield aura around the plane, and a vignette.
 
 Every sound effect (shoot, explosion, crash, near-miss whoosh, pickup
 chime, shield on/hit, life lost, stage-clear fanfare, UI click) is
-synthesized on the fly with numpy — no audio files, nothing to download.
+synthesized on the fly in pure Python (no numpy, no audio files,
+nothing to download) — the only dependency is pygame itself.
 
 ## Run it
 
 ```bash
 pip install -r requirements.txt
 python3 plane_dodge.py
+```
+
+Or build a standalone executable (no Python install needed to run it):
+
+```bash
+pip install pyinstaller
+pyinstaller --onefile --name plane_dodge plane_dodge.py
+./dist/plane_dodge
 ```
 
 ## Controls
