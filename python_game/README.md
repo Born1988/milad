@@ -23,13 +23,19 @@ collect power-ups, and clear one stage after another.
 
 ## Visuals
 
-A slowly color-cycling gradient sky (dusk → violet sunset → deep night
-→ aurora teal), a soft sun glow, parallax stars and clouds, a glowing
-exhaust trail, a tilting plane sprite, spinning/wobbling meteors,
+The plane, meteors, power-up badges, and life hearts are pre-rendered
+PNG sprites (see `assets/`, built by `gen_assets.py` with Pillow at 4x
+supersampling for clean anti-aliased gradients and shading) instead of
+flat shapes drawn live every frame. Meteors are baked in neutral
+grayscale and tinted per-stage at runtime (red → violet → toxic green
+every two stages) with a single asset.
+
+On top of that: a slowly color-cycling gradient sky (dusk → violet
+sunset → deep night → aurora teal), a soft sun glow, parallax stars
+and clouds, a glowing exhaust trail, spinning/wobbling meteors,
 shockwave rings and particle bursts on every hit, screen shake and
 flash on impact, floating score/status popups, a combo counter,
-stage-clear banners, animated power-up badges, a heart-based life HUD,
-a shield aura around the plane, and a vignette.
+stage-clear banners, a shield aura around the plane, and a vignette.
 
 ## Audio
 
@@ -52,7 +58,7 @@ want the executable for:
 **Linux / macOS:**
 ```bash
 pip install pyinstaller
-pyinstaller --onefile --name plane_dodge plane_dodge.py
+pyinstaller --onefile --name plane_dodge --add-data "assets:assets" plane_dodge.py
 ./dist/plane_dodge
 ```
 

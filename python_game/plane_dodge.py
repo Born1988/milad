@@ -23,6 +23,30 @@ import sound as sound_module
 WIDTH, HEIGHT = 480, 800
 FPS = 60
 HIGHSCORE_FILE = os.path.join(os.path.dirname(__file__), "highscore.json")
+_BASE_DIR = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+ASSETS_DIR = os.path.join(_BASE_DIR, "assets")
+
+ITEM_IMAGE_FILES = {
+    "coin": "item_coin.png",
+    "shield": "item_shield.png",
+    "rapid": "item_rapid.png",
+    "multishot": "item_multishot.png",
+    "life": "item_life.png",
+}
+
+
+def load_images():
+    """Loads the pre-rendered PNG sprites (see gen_assets.py). Returns {} if missing."""
+    images = {}
+    try:
+        images["plane"] = pygame.image.load(os.path.join(ASSETS_DIR, "plane.png")).convert_alpha()
+        images["meteor"] = pygame.image.load(os.path.join(ASSETS_DIR, "meteor.png")).convert_alpha()
+        images["heart"] = pygame.image.load(os.path.join(ASSETS_DIR, "heart.png")).convert_alpha()
+        for kind, fname in ITEM_IMAGE_FILES.items():
+            images[f"item_{kind}"] = pygame.image.load(os.path.join(ASSETS_DIR, fname)).convert_alpha()
+    except (pygame.error, FileNotFoundError):
+        return {}
+    return images
 
 WHITE = (255, 255, 255)
 GOLD = (255, 212, 121)
@@ -239,6 +263,8 @@ ITEM_KINDS = {
 class Item:
     """A falling collectible power-up / coin."""
 
+    IMAGES = {}  # set once by Game after loading sprites; {kind: Surface}
+
     def __init__(self, x, y, kind):
         self.x = x
         self.y = y
@@ -262,6 +288,15 @@ class Item:
         glow = pygame.Surface((glow_r * 2, glow_r * 2), pygame.SRCALPHA)
         pygame.draw.circle(glow, (*self.color, 70), (glow_r, glow_r), glow_r)
         surf.blit(glow, (self.x - glow_r, self.y - glow_r))
+
+        sprite = Item.IMAGES.get(self.kind)
+        if sprite is not None:
+            size = int(self.radius * 2.1)
+            scaled = pygame.transform.smoothscale(sprite, (size, size))
+            rotated = pygame.transform.rotozoom(scaled, math.sin(self.spin * 0.02) * 12, 1.0)
+            rect = rotated.get_rect(center=(self.x, self.y))
+            surf.blit(rotated, rect)
+            return
 
         badge = pygame.Surface((self.radius * 2.2, self.radius * 2.2), pygame.SRCALPHA)
         c = self.radius * 1.1
@@ -311,6 +346,9 @@ class Item:
 
 
 class Meteor:
+    BASE_IMAGE = None  # set once by Game after loading sprites
+    _tint_cache = {}
+
     def __init__(self, x, y, size, tint=DANGER, tint_dark=DANGER_DARK):
         self.x = x
         self.y = y
@@ -335,12 +373,34 @@ class Meteor:
     def radius(self):
         return self.size * 0.42
 
+    def _tinted_sprite(self):
+        key = self.tint
+        cached = Meteor._tint_cache.get(key)
+        if cached is None:
+            tinted = Meteor.BASE_IMAGE.copy()
+            tinted.fill((*self.tint, 255), special_flags=pygame.BLEND_RGBA_MULT)
+            Meteor._tint_cache[key] = tinted
+            cached = tinted
+        return cached
+
     def draw(self, surf):
         r = self.size / 2
         glow = pygame.Surface((self.size * 2.4, self.size * 2.4), pygame.SRCALPHA)
         gc = (*self.tint, 55)
         pygame.draw.circle(glow, gc, (self.size * 1.2, self.size * 1.2), r * 1.5)
         surf.blit(glow, (self.x - self.size * 1.2, self.y - self.size * 1.2))
+
+        if Meteor.BASE_IMAGE is not None:
+            scaled = pygame.transform.smoothscale(self._tinted_sprite(), (self.size, self.size))
+            rotated = pygame.transform.rotate(scaled, self.angle)
+            if self.hp > 1:
+                core = pygame.Surface(rotated.get_size(), pygame.SRCALPHA)
+                pygame.draw.circle(core, (255, 200, 90, 220), (core.get_width() // 2, core.get_height() // 2),
+                                    r * 0.26)
+                rotated.blit(core, (0, 0))
+            rect = rotated.get_rect(center=(self.x, self.y))
+            surf.blit(rotated, rect)
+            return
 
         body = pygame.Surface((self.size, self.size), pygame.SRCALPHA)
         cx = cy = self.size / 2
@@ -366,6 +426,8 @@ class Meteor:
 
 
 class Plane:
+    IMAGE = None  # set once by Game after loading sprites
+
     def __init__(self):
         self.x = WIDTH / 2
         self.target_x = WIDTH / 2
@@ -392,12 +454,19 @@ class Plane:
         cx, cy = self.x, self.y + y_off
         w, h = self.width, self.height
 
-        body = pygame.Surface((w * 1.6, h * 1.3), pygame.SRCALPHA)
-        bx, by = w * 0.8, h * 0.65
-
         shadow = pygame.Surface((w * 1.1, h * 0.35), pygame.SRCALPHA)
         pygame.draw.ellipse(shadow, (0, 0, 0, 70), shadow.get_rect())
         surf.blit(shadow, (cx - w * 0.55, self.y + h * 0.55 + 10))
+
+        if Plane.IMAGE is not None:
+            scaled = pygame.transform.smoothscale(Plane.IMAGE, (int(w * 1.1), int(h * 1.1)))
+            rotated = pygame.transform.rotozoom(scaled, self.tilt, 1.0)
+            rect = rotated.get_rect(center=(cx, cy))
+            surf.blit(rotated, rect)
+            return
+
+        body = pygame.Surface((w * 1.6, h * 1.3), pygame.SRCALPHA)
+        bx, by = w * 0.8, h * 0.65
 
         tail_pts = [
             (bx, by - h / 2 + h * 0.62),
@@ -460,6 +529,12 @@ class Game:
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
         self.clock = pygame.time.Clock()
         self.sound = sound_module.SoundBank()
+
+        self.images = load_images()
+        Plane.IMAGE = self.images.get("plane")
+        Meteor.BASE_IMAGE = self.images.get("meteor")
+        Item.IMAGES = {k: self.images[f"item_{k}"] for k in ITEM_KINDS if f"item_{k}" in self.images}
+        self.heart_image = self.images.get("heart")
 
         self.font_big = self._font(64, bold=True)
         self.font_mid = self._font(30, bold=True)
@@ -834,8 +909,15 @@ class Game:
             pygame.draw.circle(s, (255, 230, 180, a), (r, r), r)
             surf.blit(s, (sun_x - r, sun_y - r))
 
-    @staticmethod
-    def _draw_heart(surf, x, y, size, color, filled=True):
+    def _draw_heart(self, surf, x, y, size, color, filled=True):
+        if self.heart_image is not None:
+            scaled = pygame.transform.smoothscale(self.heart_image, (int(size * 2.1), int(size * 2.1)))
+            if not filled:
+                scaled = scaled.copy()
+                scaled.fill((255, 255, 255, 60), special_flags=pygame.BLEND_RGBA_MULT)
+            surf.blit(scaled, scaled.get_rect(center=(x, y)))
+            return
+
         r = size * 0.32
         if filled:
             pygame.draw.circle(surf, color, (x - r * 0.9, y - r * 0.3), r)
