@@ -13,6 +13,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class CAP_Channel_Auto_Poster {
 
+	public static $inst;
+
 	const OPT      = 'cap_settings';
 	const META_SENT = '_cap_sent';
 	const META_SKIP = '_cap_skip';
@@ -24,6 +26,7 @@ class CAP_Channel_Auto_Poster {
 	);
 
 	public function __construct() {
+		self::$inst = $this;
 		add_action( 'admin_menu', array( $this, 'menu' ) );
 		add_action( 'admin_init', array( $this, 'register_settings' ) );
 		add_action( 'transition_post_status', array( $this, 'on_transition' ), 10, 3 );
@@ -41,7 +44,7 @@ class CAP_Channel_Auto_Poster {
 
 	/* ---------------------------------------------------------------- تنظیمات */
 
-	private function settings() {
+	public function settings() {
 		return wp_parse_args(
 			get_option( self::OPT, array() ),
 			array(
@@ -53,6 +56,9 @@ class CAP_Channel_Auto_Poster {
 				'bl_chat'    => '',
 				'post_types' => array( 'post', 'product' ),
 				'send_image' => 1,
+				'bot_enabled'   => 0,
+				'bot_token'     => '',
+				'bot_admin'     => '',
 				'use_short'     => 1,
 				'footer_on'     => 1,
 				'support_phone' => '09191242492',
@@ -85,6 +91,9 @@ class CAP_Channel_Auto_Poster {
 			$out[ $k ] = isset( $in[ $k ] ) ? trim( sanitize_text_field( $in[ $k ] ) ) : '';
 		}
 		$out['post_types']  = ! empty( $in['post_types'] ) && is_array( $in['post_types'] ) ? array_map( 'sanitize_key', $in['post_types'] ) : array( 'post' );
+		$out['bot_enabled'] = empty( $in['bot_enabled'] ) ? 0 : 1;
+		$out['bot_token']   = isset( $in['bot_token'] ) ? trim( sanitize_text_field( $in['bot_token'] ) ) : '';
+		$out['bot_admin']   = isset( $in['bot_admin'] ) ? trim( sanitize_text_field( $in['bot_admin'] ) ) : '';
 		foreach ( array( 'use_short', 'footer_on' ) as $k ) {
 			$out[ $k ] = empty( $in[ $k ] ) ? 0 : 1;
 		}
@@ -162,6 +171,7 @@ class CAP_Channel_Auto_Poster {
 						<p class="description">متغیرها: <code>{support_phone}</code> <code>{shop_phone}</code> <code>{support_tg}</code> <code>{address}</code> <code>{bot_url}</code> <code>{bot_handle}</code></p>
 					</td></tr>
 				</table>
+				<?php do_action( 'cap_settings_bot_fields', $s, $name ); ?>
 				<?php submit_button( 'ذخیره تنظیمات' ); ?>
 			</form>
 
@@ -199,6 +209,7 @@ class CAP_Channel_Auto_Poster {
 				<?php wp_nonce_field( 'cap_test' ); ?>
 				<?php submit_button( 'ارسال پیام آزمایشی به کانال‌ها', 'secondary' ); ?>
 			</form>
+			<?php do_action( 'cap_settings_after' ); ?>
 		</div>
 		<?php
 	}
@@ -323,7 +334,7 @@ class CAP_Channel_Auto_Poster {
 	}
 
 	/** فوتر: اطلاعات تماس + لینک ربات */
-	private function footer( $s ) {
+	public function footer( $s ) {
 		if ( empty( $s['footer_on'] ) || '' === trim( $s['footer'] ) ) {
 			return '';
 		}
@@ -537,4 +548,7 @@ class CAP_Channel_Auto_Poster {
 	}
 }
 
+require_once __DIR__ . '/includes/bot.php';
+
 new CAP_Channel_Auto_Poster();
+new CAP_Bot();
