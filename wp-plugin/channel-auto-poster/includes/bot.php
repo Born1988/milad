@@ -311,7 +311,28 @@ class CAP_Bot {
 
 	/* ------------------------------------------------------- API تلگرام */
 
+	/** راست‌چین کردن متن‌ها و دکمه‌ها: علامت RLM اول هر خط/دکمه (برای نام‌هایی که با حروف لاتین یا عدد شروع می‌شوند) */
+	private function rtl_fix( $params ) {
+		$rtl = "\u{200F}";
+		foreach ( array( 'text', 'caption' ) as $k ) {
+			if ( isset( $params[ $k ] ) && is_string( $params[ $k ] ) && preg_match( '/\p{Arabic}/u', $params[ $k ] ) ) {
+				$params[ $k ] = preg_replace( '/^(?!\x{200F})/mu', $rtl, $params[ $k ] );
+			}
+		}
+		if ( isset( $params['reply_markup']['inline_keyboard'] ) && is_array( $params['reply_markup']['inline_keyboard'] ) ) {
+			foreach ( $params['reply_markup']['inline_keyboard'] as $i => $row ) {
+				foreach ( $row as $j => $b ) {
+					if ( isset( $b['text'] ) && preg_match( '/\p{Arabic}/u', $b['text'] ) && 0 !== strpos( $b['text'], $rtl ) ) {
+						$params['reply_markup']['inline_keyboard'][ $i ][ $j ]['text'] = $rtl . $b['text'];
+					}
+				}
+			}
+		}
+		return $params;
+	}
+
 	private function tg( $method, $params = array() ) {
+		$params = $this->rtl_fix( $params );
 		$s = $this->s();
 		$r = wp_remote_post( CAP_Channel_Auto_Poster::$inst->api_base( 'telegram' ) . $s['bot_token'] . '/' . $method, array(
 			'timeout' => 15,
