@@ -90,6 +90,25 @@ class CAP_Channel_Auto_Poster {
 	}
 
 	public function sanitize( $in ) {
+		$out = $this->sanitize_all( $in );
+		$old = $this->settings();
+		$bot = array( 'bot_enabled', 'bot_token', 'bot_admin', 'bot_welcome', 'bot_image', 'hours', 'channel_link', 'shop_lat', 'shop_lng' );
+		if ( 'bot' === ( $in['_section'] ?? '' ) ) {
+			// فرم ربات: فقط فیلدهای ربات عوض شود
+			$res = $old;
+			foreach ( $bot as $k ) {
+				$res[ $k ] = $out[ $k ];
+			}
+			return $res;
+		}
+		// فرم کانال: فیلدهای ربات دست نخورد
+		foreach ( $bot as $k ) {
+			$out[ $k ] = $old[ $k ];
+		}
+		return $out;
+	}
+
+	private function sanitize_all( $in ) {
 		$out = array();
 		foreach ( array( 'tg_enabled', 'bl_enabled', 'send_image' ) as $k ) {
 			$out[ $k ] = empty( $in[ $k ] ) ? 0 : 1;
@@ -130,6 +149,11 @@ class CAP_Channel_Auto_Poster {
 		?>
 		<div class="wrap" dir="rtl" style="text-align:right">
 			<h1>ارسال خودکار مقالات به کانال تلگرام و بله</h1>
+			<p>
+				<a class="button button-primary" href="<?php echo esc_url( admin_url( 'admin.php?page=cap-bot' ) ); ?>">🤖 تنظیمات ربات تلگرام</a>
+				<a class="button" href="<?php echo esc_url( admin_url( 'edit.php?post_type=cap_problem' ) ); ?>">🔧 مشکلات ربات</a>
+				<a class="button" href="<?php echo esc_url( admin_url( 'admin.php?page=cap-leads' ) ); ?>">📩 درخواست‌های مشتری</a>
+			</p>
 
 			<?php if ( isset( $_GET['cap_msg'] ) ) : // phpcs:ignore ?>
 				<div class="notice notice-info"><p><?php echo esc_html( wp_unslash( $_GET['cap_msg'] ) ); // phpcs:ignore ?></p></div>
@@ -137,6 +161,7 @@ class CAP_Channel_Auto_Poster {
 
 			<form method="post" action="options.php">
 				<?php settings_fields( 'cap_group' ); ?>
+				<input type="hidden" name="<?php echo $name; ?>[_section]" value="main">
 
 				<h2>تلگرام</h2>
 				<table class="form-table">
@@ -185,7 +210,6 @@ class CAP_Channel_Auto_Poster {
 						<p class="description">متغیرها: <code>{support_phone}</code> <code>{shop_phone}</code> <code>{support_tg}</code> <code>{address}</code> <code>{bot_url}</code> <code>{bot_handle}</code></p>
 					</td></tr>
 				</table>
-				<?php do_action( 'cap_settings_bot_fields', $s, $name ); ?>
 				<?php submit_button( 'ذخیره تنظیمات' ); ?>
 			</form>
 
@@ -223,7 +247,6 @@ class CAP_Channel_Auto_Poster {
 				<?php wp_nonce_field( 'cap_test' ); ?>
 				<?php submit_button( 'ارسال پیام آزمایشی به کانال‌ها', 'secondary' ); ?>
 			</form>
-			<?php do_action( 'cap_settings_after' ); ?>
 		</div>
 		<?php
 	}

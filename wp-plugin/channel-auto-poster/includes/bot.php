@@ -36,8 +36,6 @@ class CAP_Bot {
 		add_action( 'admin_menu', array( $this, 'menu' ), 20 );
 		add_action( 'admin_post_cap_webhook', array( $this, 'handle_webhook' ) );
 		add_action( 'admin_post_cap_lead_del', array( $this, 'handle_lead_del' ) );
-		add_action( 'cap_settings_bot_fields', array( $this, 'settings_fields' ), 10, 2 );
-		add_action( 'cap_settings_after', array( $this, 'settings_webhook_box' ) );
 	}
 
 	private function s() {
@@ -113,9 +111,8 @@ class CAP_Bot {
 
 	/* ------------------------------------------------------- تنظیمات و webhook */
 
-	public function settings_fields( $s, $name ) {
+	private function fields( $s, $name ) {
 		?>
-		<h2>🤖 ربات راهنمای انتخاب محصول</h2>
 		<table class="form-table">
 			<tr><th>فعال</th><td><label><input type="checkbox" name="<?php echo $name; ?>[bot_enabled]" value="1" <?php checked( $s['bot_enabled'] ); ?>> ربات به پیام‌ها پاسخ بدهد</label></td></tr>
 			<tr><th>توکن ربات</th><td><input type="text" class="regular-text" style="direction:ltr" name="<?php echo $name; ?>[bot_token]" value="<?php echo esc_attr( $s['bot_token'] ); ?>" placeholder="توکن @<?php echo esc_attr( $s['bot_id'] ); ?> از BotFather"><p class="description">توکن خودِ ربات (نه ربات کانال). پس از ذخیره، «ثبت webhook» را پایین همین صفحه بزنید.</p></td></tr>
@@ -129,7 +126,7 @@ class CAP_Bot {
 		<?php
 	}
 
-	public function settings_webhook_box() {
+	private function webhook_box() {
 		$url = rest_url( 'cap/v1/bot' );
 		?>
 		<hr>
@@ -143,6 +140,34 @@ class CAP_Bot {
 		<?php
 	}
 
+	public function bot_page() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			return;
+		}
+		$s    = $this->s();
+		$name = CAP_Channel_Auto_Poster::OPT;
+		?>
+		<div class="wrap" dir="rtl" style="text-align:right">
+			<h1>🤖 ربات راهنمای انتخاب محصول</h1>
+			<?php if ( isset( $_GET['cap_msg'] ) ) : // phpcs:ignore ?>
+				<div class="notice notice-info"><p><?php echo esc_html( wp_unslash( $_GET['cap_msg'] ) ); // phpcs:ignore ?></p></div>
+			<?php endif; ?>
+			<p>
+				<a class="button" href="<?php echo esc_url( admin_url( 'edit.php?post_type=cap_problem' ) ); ?>">🔧 ویرایش مشکلات و راه‌حل‌ها</a>
+				<a class="button" href="<?php echo esc_url( admin_url( 'admin.php?page=cap-leads' ) ); ?>">📩 درخواست‌های مشتری</a>
+				<?php if ( $s['bot_id'] ) : ?><a class="button" target="_blank" href="<?php echo esc_url( 'https://t.me/' . $s['bot_id'] ); ?>">باز کردن ربات @<?php echo esc_html( $s['bot_id'] ); ?></a><?php endif; ?>
+			</p>
+			<form method="post" action="options.php">
+				<?php settings_fields( 'cap_group' ); ?>
+				<input type="hidden" name="<?php echo $name; ?>[_section]" value="bot">
+				<?php $this->fields( $s, $name ); ?>
+				<?php submit_button( 'ذخیره تنظیمات ربات' ); ?>
+			</form>
+			<?php $this->webhook_box(); ?>
+		</div>
+		<?php
+	}
+
 	private function secret() {
 		$sec = get_option( self::SECRET );
 		if ( ! $sec ) {
@@ -153,7 +178,7 @@ class CAP_Bot {
 	}
 
 	private function back( $msg ) {
-		wp_safe_redirect( add_query_arg( 'cap_msg', rawurlencode( $msg ), admin_url( 'admin.php?page=cap-settings' ) ) );
+		wp_safe_redirect( add_query_arg( 'cap_msg', rawurlencode( $msg ), admin_url( 'admin.php?page=cap-bot' ) ) );
 		exit;
 	}
 
@@ -179,6 +204,7 @@ class CAP_Bot {
 	/* ------------------------------------------------------- درخواست‌ها (leads) */
 
 	public function menu() {
+		add_submenu_page( 'cap-settings', 'ربات تلگرام', '🤖 ربات تلگرام', 'manage_options', 'cap-bot', array( $this, 'bot_page' ) );
 		add_submenu_page( 'cap-settings', 'درخواست‌های مشتری', '📩 درخواست‌های مشتری', 'manage_options', 'cap-leads', array( $this, 'leads_page' ) );
 	}
 
