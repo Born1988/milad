@@ -34,6 +34,8 @@ class CAP_Channel_Auto_Poster {
 		add_action( 'admin_post_cap_resend', array( $this, 'handle_resend' ) );
 		add_action( 'admin_post_cap_manual', array( $this, 'handle_manual' ) );
 		add_filter( 'post_row_actions', array( $this, 'row_action' ), 10, 2 );
+		add_filter( 'page_row_actions', array( $this, 'row_action' ), 10, 2 );
+		add_action( 'admin_init', array( $this, 'bulk_hooks' ) );
 		add_action( 'admin_notices', array( $this, 'post_notice' ) );
 	}
 
@@ -49,8 +51,9 @@ class CAP_Channel_Auto_Poster {
 				'bl_enabled' => 0,
 				'bl_token'   => '',
 				'bl_chat'    => '',
-				'post_types' => array( 'post' ),
+				'post_types' => array( 'post', 'product' ),
 				'send_image' => 1,
+				'template_product' => "🛒 <b>{title}</b>\n\n💰 قیمت: {price}\n\n{excerpt}\n\n🔗 {link}\n\n{hashtags}",
 				'template'   => "📰 <b>{title}</b>\n\n{excerpt}\n\n🔗 {link}\n\n{hashtags}",
 				'excerpt_len' => 250,
 			)
@@ -58,7 +61,7 @@ class CAP_Channel_Auto_Poster {
 	}
 
 	public function menu() {
-		add_options_page( 'ارسال به کانال', 'ارسال به کانال', 'manage_options', 'cap-settings', array( $this, 'settings_page' ) );
+		add_menu_page( 'ارسال به کانال', 'ارسال به کانال', 'manage_options', 'cap-settings', array( $this, 'settings_page' ), 'dashicons-megaphone', 58 );
 	}
 
 	public function register_settings() {
@@ -74,6 +77,7 @@ class CAP_Channel_Auto_Poster {
 			$out[ $k ] = isset( $in[ $k ] ) ? trim( sanitize_text_field( $in[ $k ] ) ) : '';
 		}
 		$out['post_types']  = ! empty( $in['post_types'] ) && is_array( $in['post_types'] ) ? array_map( 'sanitize_key', $in['post_types'] ) : array( 'post' );
+		$out['template_product'] = isset( $in['template_product'] ) ? wp_kses( $in['template_product'], array( 'b' => array(), 'i' => array(), 'u' => array(), 'a' => array( 'href' => array() ), 'code' => array() ) ) : '';
 		$out['template']    = isset( $in['template'] ) ? wp_kses( $in['template'], array( 'b' => array(), 'i' => array(), 'u' => array(), 'a' => array( 'href' => array() ), 'code' => array() ) ) : '';
 		$out['excerpt_len'] = max( 50, min( 800, (int) ( $in['excerpt_len'] ?? 250 ) ) );
 		return $out;
@@ -123,6 +127,10 @@ class CAP_Channel_Auto_Poster {
 						<textarea name="<?php echo $name; ?>[template]" rows="7" class="large-text"><?php echo esc_textarea( $s['template'] ); ?></textarea>
 						<p class="description">متغیرها: <code>{title}</code> <code>{excerpt}</code> <code>{link}</code> <code>{hashtags}</code> <code>{category}</code> <code>{author}</code> — تگ‌های مجاز: &lt;b&gt; &lt;i&gt; &lt;u&gt; &lt;a&gt; &lt;code&gt;</p>
 					</td></tr>
+					<tr><th>قالب پیام محصولات</th><td>
+						<textarea name="<?php echo $name; ?>[template_product]" rows="6" class="large-text"><?php echo esc_textarea( $s['template_product'] ); ?></textarea>
+						<p class="description">برای محصولات ووکامرس. متغیر اضافه: <code>{price}</code> (قیمت)</p>
+					</td></tr>
 				</table>
 				<?php submit_button( 'ذخیره تنظیمات' ); ?>
 			</form>
@@ -136,8 +144,8 @@ class CAP_Channel_Auto_Poster {
 					<tr><th>ارسال یک مقاله</th><td>
 						<select name="post_id">
 							<option value="0">— انتخاب مقاله (اختیاری) —</option>
-							<?php foreach ( get_posts( array( 'numberposts' => 40, 'post_type' => (array) $s['post_types'], 'post_status' => 'publish' ) ) as $p ) : ?>
-								<option value="<?php echo (int) $p->ID; ?>"><?php echo esc_html( get_the_title( $p ) ); ?></option>
+							<?php foreach ( get_posts( array( 'numberposts' => 40, 'post_type' => $this->all_types(), 'post_status' => 'publish' ) ) as $p ) : ?>
+								<option value="<?php echo (int) $p->ID; ?>"><?php echo esc_html( get_the_title( $p ) . ' (' . get_post_type_object( $p->post_type )->labels->singular_name . ')' ); ?></option>
 							<?php endforeach; ?>
 						</select>
 					</td></tr>
@@ -164,10 +172,43 @@ class CAP_Channel_Auto_Poster {
 		<?php
 	}
 
+	/** همهٔ نوع‌نوشته‌های عمومی (نوشته، برگه، محصول، ...) */
+	private function all_types() {
+		$t = get_post_types( array( 'public' => true ) );
+		unset( $t['attachment'] );
+		return array_values( $t );
+	}
+
+	public function bulk_hooks() {
+		foreach ( $this->all_types() as $pt ) {
+			add_filter( "bulk_actions-edit-{$pt}", array( $this, 'bulk_add' ) );
+			add_filter( "handle_bulk_actions-edit-{$pt}", array( $this, 'bulk_handle' ), 10, 3 );
+		}
+	}
+
+	public function bulk_add( $a ) {
+		$a['cap_send'] = '📤 ارسال به کانال';
+		return $a;
+	}
+
+	public function bulk_handle( $redirect, $action, $ids ) {
+		if ( 'cap_send' !== $action || ! current_user_can( 'edit_others_posts' ) ) {
+			return $redirect;
+		}
+		$ok = 0;
+		foreach ( $ids as $id ) {
+			$r = $this->send_post( (int) $id );
+			if ( $r && in_array( true, $r, true ) ) {
+				$ok++;
+			}
+		}
+		return add_query_arg( 'cap_msg', rawurlencode( "ارسال دستی: {$ok} از " . count( $ids ) . ' مورد با موفقیت ارسال شد.' ), $redirect );
+	}
+
 	/* ---------------------------------------------------------------- متاباکس */
 
 	public function meta_box() {
-		foreach ( (array) $this->settings()['post_types'] as $pt ) {
+		foreach ( $this->all_types() as $pt ) {
 			add_meta_box( 'cap_box', 'ارسال به کانال', array( $this, 'meta_box_html' ), $pt, 'side' );
 		}
 	}
@@ -258,12 +299,19 @@ class CAP_Channel_Auto_Poster {
 		}
 
 		$tags = array();
-		foreach ( (array) get_the_tags( $post->ID ) as $t ) {
+		$is_product = 'product' === $post->post_type;
+		$tag_terms  = $is_product ? get_the_terms( $post->ID, 'product_tag' ) : get_the_tags( $post->ID );
+		foreach ( (array) $tag_terms as $t ) {
 			if ( $t && isset( $t->name ) ) {
 				$tags[] = '#' . preg_replace( '/[\s\-]+/u', '_', $t->name );
 			}
 		}
-		$cats = get_the_category( $post->ID );
+		$cats = $is_product ? get_the_terms( $post->ID, 'product_cat' ) : get_the_category( $post->ID );
+		$cats = is_array( $cats ) ? array_values( $cats ) : array();
+		$price = '';
+		if ( $is_product && function_exists( 'wc_get_product' ) && wc_get_product( $post->ID ) ) {
+			$price = trim( html_entity_decode( wp_strip_all_tags( wc_get_product( $post->ID )->get_price_html() ), ENT_QUOTES, 'UTF-8' ) );
+		}
 
 		$map = array(
 			'{title}'    => esc_html( html_entity_decode( get_the_title( $post ), ENT_QUOTES, 'UTF-8' ) ),
@@ -271,9 +319,10 @@ class CAP_Channel_Auto_Poster {
 			'{link}'     => esc_url( get_permalink( $post ) ),
 			'{hashtags}' => esc_html( implode( ' ', array_slice( $tags, 0, 6 ) ) ),
 			'{category}' => $cats ? esc_html( $cats[0]->name ) : '',
+			'{price}'    => esc_html( $price ),
 			'{author}'   => esc_html( get_the_author_meta( 'display_name', $post->post_author ) ),
 		);
-		return trim( strtr( $s['template'], $map ) );
+		return trim( strtr( $is_product ? $s['template_product'] : $s['template'], $map ) );
 	}
 
 	/** ارسال به API تلگرام/بله. true در صورت موفقیت، در غیر این صورت متن خطا */
@@ -318,7 +367,7 @@ class CAP_Channel_Auto_Poster {
 	/* ---------------------------------------------------------------- اکشن‌های ادمین */
 
 	private function back( $msg ) {
-		wp_safe_redirect( add_query_arg( 'cap_msg', rawurlencode( $msg ), admin_url( 'options-general.php?page=cap-settings' ) ) );
+		wp_safe_redirect( add_query_arg( 'cap_msg', rawurlencode( $msg ), admin_url( 'admin.php?page=cap-settings' ) ) );
 		exit;
 	}
 
@@ -359,7 +408,7 @@ class CAP_Channel_Auto_Poster {
 	}
 
 	public function row_action( $actions, $post ) {
-		if ( 'publish' === $post->post_status && current_user_can( 'edit_post', $post->ID ) && in_array( $post->post_type, (array) $this->settings()['post_types'], true ) ) {
+		if ( 'publish' === $post->post_status && current_user_can( 'edit_post', $post->ID ) ) {
 			$url = wp_nonce_url( admin_url( 'admin-post.php?action=cap_resend&post=' . $post->ID ), 'cap_resend_' . $post->ID );
 			$actions['cap_send'] = '<a href="' . esc_url( $url ) . '">📤 ارسال به کانال</a>';
 		}
