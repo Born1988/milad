@@ -279,6 +279,18 @@ class CAP_Widget {
 		return array( 'text' => '✅ درخواست شما ثبت شد؛ کارشناس به‌زودی تماس می‌گیرد 🙏' . ( $sp ? "\n📞 " . $sp : '' ), 'chips' => array() );
 	}
 
+	/** تیره/روشن کردن رنگ هگز (pct منفی = تیره‌تر) */
+	private function shade( $hex, $pct ) {
+		$hex = ltrim( $hex, '#' );
+		$out = '#';
+		foreach ( array( 0, 2, 4 ) as $o ) {
+			$v    = hexdec( substr( $hex, $o, 2 ) );
+			$v    = max( 0, min( 255, (int) round( $v * ( 100 + $pct ) / 100 ) ) );
+			$out .= str_pad( dechex( $v ), 2, '0', STR_PAD_LEFT );
+		}
+		return $out;
+	}
+
 	/* ------------------------------------------------------------ نمایش در سایت */
 
 	public function render() {
@@ -290,56 +302,97 @@ class CAP_Widget {
 			return;
 		}
 		$color = $s['widget_color'];
+		$dark  = $this->shade( $color, -28 );
 		$cfg   = array(
 			'api'   => esc_url_raw( rest_url( 'cap/v1/w' ) ),
 			'title' => $s['widget_title'] ?: 'راهنمای خرید',
 		);
+		$c  = esc_attr( $color );
+		$d  = esc_attr( $dark );
 		?>
 <style>
-#capw-btn{position:fixed;left:18px;bottom:18px;z-index:99998;display:flex;align-items:center;gap:8px;background:<?php echo esc_attr( $color ); ?>;color:#fff;border:0;border-radius:999px;padding:12px 18px;font:600 15px/1 Tahoma,Vazirmatn,sans-serif;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.25);direction:rtl;animation:capw-pulse 2.4s infinite}
-#capw-btn:hover{filter:brightness(1.1)}
-@keyframes capw-pulse{0%{box-shadow:0 0 0 0 rgba(37,99,235,.45)}70%{box-shadow:0 0 0 14px rgba(37,99,235,0)}100%{box-shadow:0 0 0 0 rgba(37,99,235,0)}}
-#capw{position:fixed;left:18px;bottom:18px;z-index:99999;width:360px;max-width:calc(100vw - 24px);height:560px;max-height:calc(100vh - 36px);display:none;flex-direction:column;background:#fff;border-radius:18px;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.3);direction:rtl;font:14px/1.7 Tahoma,Vazirmatn,sans-serif;color:#222}
-#capw.open{display:flex}
-#capw header{background:<?php echo esc_attr( $color ); ?>;color:#fff;padding:12px 14px;display:flex;align-items:center;gap:8px}
-#capw header b{flex:1;font-size:15px}
-#capw header button{background:rgba(255,255,255,.2);border:0;color:#fff;border-radius:8px;width:30px;height:30px;cursor:pointer;font-size:16px}
-#capw-msgs{flex:1;overflow-y:auto;padding:12px;background:#f3f4f6}
-.capw-b{max-width:92%;padding:9px 12px;border-radius:14px;margin:6px 0;white-space:pre-wrap;word-wrap:break-word}
-.capw-bot{background:#fff;border:1px solid #e5e7eb;border-bottom-right-radius:4px}
-.capw-me{background:<?php echo esc_attr( $color ); ?>;color:#fff;margin-left:auto;border-bottom-left-radius:4px}
-.capw-chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
-.capw-chip{background:#fff;border:1px solid <?php echo esc_attr( $color ); ?>;color:<?php echo esc_attr( $color ); ?>;border-radius:999px;padding:6px 12px;font:inherit;font-size:13px;cursor:pointer;text-decoration:none;display:inline-block}
-.capw-chip:hover{background:<?php echo esc_attr( $color ); ?>;color:#fff}
-.capw-card{display:flex;gap:10px;align-items:center;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:8px;margin:6px 0;text-decoration:none;color:inherit}
-.capw-card:hover{border-color:<?php echo esc_attr( $color ); ?>}
-.capw-card img{width:56px;height:56px;object-fit:cover;border-radius:8px;background:#eee;flex:none}
-.capw-card span{display:block;font-size:13px}.capw-card em{display:block;font-style:normal;color:#059669;font-weight:700;font-size:13px}
-#capw form.capw-in{display:flex;gap:6px;padding:10px;border-top:1px solid #e5e7eb;background:#fff}
-#capw form.capw-in input{flex:1;border:1px solid #d1d5db;border-radius:10px;padding:9px 10px;font:inherit;min-width:0}
-#capw form.capw-in button{background:<?php echo esc_attr( $color ); ?>;color:#fff;border:0;border-radius:10px;padding:0 14px;cursor:pointer;font:inherit}
-.capw-form{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:10px;margin:6px 0;display:flex;flex-direction:column;gap:6px}
-.capw-form input{border:1px solid #d1d5db;border-radius:8px;padding:8px;font:inherit}
-.capw-form button{background:<?php echo esc_attr( $color ); ?>;color:#fff;border:0;border-radius:8px;padding:9px;cursor:pointer;font:inherit}
-@media(max-width:480px){#capw{left:8px;bottom:8px;width:calc(100vw - 16px);height:calc(100vh - 16px);max-height:none}}
+#capw-root{--c:<?php echo $c; ?>;--d:<?php echo $d; ?>;--f:inherit;font-family:var(--f);direction:rtl}
+#capw-root *{box-sizing:border-box;font-family:var(--f)}
+#capw-btn{position:fixed;left:20px;bottom:20px;z-index:99998;width:62px;height:62px;border-radius:50%;border:0;padding:0;cursor:pointer;color:#fff;display:grid;place-items:center;background:linear-gradient(135deg,var(--c),var(--d));box-shadow:0 8px 24px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.35);transition:transform .25s cubic-bezier(.34,1.56,.64,1),box-shadow .25s}
+#capw-btn::before{content:"";position:absolute;inset:0;border-radius:50%;background:var(--c);opacity:.5;z-index:-1;animation:capw-ring 2.6s ease-out infinite}
+#capw-btn:hover{transform:translateY(-4px) scale(1.1);box-shadow:0 14px 32px rgba(0,0,0,.34),inset 0 1px 0 rgba(255,255,255,.4)}
+#capw-btn:active{transform:scale(.95)}
+#capw-btn svg{width:30px;height:30px;transition:transform .35s}
+#capw-btn:hover svg{transform:rotate(-12deg) scale(1.08)}
+#capw-btn .lbl{position:absolute;left:76px;top:50%;transform:translate(-8px,-50%);white-space:nowrap;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);color:#1f2937;padding:8px 16px;border-radius:999px;font-size:14px;font-weight:600;box-shadow:0 6px 18px rgba(0,0,0,.18);opacity:0;pointer-events:none;transition:opacity .2s,transform .25s}
+#capw-btn:hover .lbl{opacity:1;transform:translate(0,-50%)}
+#capw-btn .dot{position:absolute;top:2px;right:2px;width:16px;height:16px;border-radius:50%;background:#ef4444;border:2px solid #fff;font-size:10px;line-height:12px;text-align:center}
+#capw-hi{position:fixed;left:94px;bottom:34px;z-index:99997;max-width:230px;background:#fff;color:#1f2937;border-radius:16px 16px 16px 4px;padding:10px 14px;font-size:13.5px;line-height:1.7;box-shadow:0 10px 28px rgba(0,0,0,.2);cursor:pointer;opacity:0;transform:translateY(8px) scale(.95);pointer-events:none;transition:opacity .3s,transform .3s}
+#capw-hi.show{opacity:1;transform:none;pointer-events:auto}
+#capw-hi b{position:absolute;top:-8px;right:-8px;width:20px;height:20px;border-radius:50%;background:#6b7280;color:#fff;font-size:11px;line-height:20px;text-align:center}
+@keyframes capw-ring{0%{transform:scale(1);opacity:.5}80%,100%{transform:scale(1.7);opacity:0}}
+#capw{position:fixed;left:20px;bottom:20px;z-index:99999;width:370px;max-width:calc(100vw - 24px);height:580px;max-height:calc(100vh - 40px);display:none;flex-direction:column;border-radius:22px;overflow:hidden;background:rgba(255,255,255,.88);backdrop-filter:saturate(1.5) blur(18px);-webkit-backdrop-filter:saturate(1.5) blur(18px);border:1px solid rgba(255,255,255,.6);box-shadow:0 20px 60px rgba(0,0,0,.35);color:#1f2937;font-size:14px;line-height:1.75;transform-origin:bottom left}
+#capw.open{display:flex;animation:capw-in .3s cubic-bezier(.34,1.3,.64,1)}
+@keyframes capw-in{from{opacity:0;transform:translateY(20px) scale(.92)}to{opacity:1;transform:none}}
+#capw header{background:linear-gradient(135deg,var(--c),var(--d));color:#fff;padding:14px 16px;display:flex;align-items:center;gap:10px}
+#capw header .av{width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.22);display:grid;place-items:center;font-size:20px;flex:none}
+#capw header .tt{flex:1;line-height:1.3}#capw header .tt b{display:block;font-size:15px}#capw header .tt small{opacity:.85;font-size:12px}
+#capw header .tt small::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;background:#4ade80;margin-left:5px}
+#capw header button{background:rgba(255,255,255,.18);border:0;color:#fff;border-radius:50%;width:32px;height:32px;cursor:pointer;font-size:15px;transition:background .2s,transform .2s}
+#capw header button:hover{background:rgba(255,255,255,.34);transform:rotate(8deg)}
+#capw-msgs{flex:1;overflow-y:auto;padding:14px;scroll-behavior:smooth}
+#capw-msgs::-webkit-scrollbar{width:6px}#capw-msgs::-webkit-scrollbar-thumb{background:rgba(0,0,0,.18);border-radius:3px}
+.capw-b{max-width:90%;padding:10px 14px;border-radius:18px;margin:7px 0;white-space:pre-wrap;word-wrap:break-word;animation:capw-pop .25s ease-out}
+@keyframes capw-pop{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.capw-bot{background:rgba(255,255,255,.95);border:1px solid rgba(0,0,0,.06);border-top-right-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.05)}
+.capw-me{background:linear-gradient(135deg,var(--c),var(--d));color:#fff;margin-left:auto;border-top-left-radius:6px}
+.capw-typing{display:inline-flex;gap:4px;padding:13px 16px}.capw-typing i{width:7px;height:7px;border-radius:50%;background:#9ca3af;animation:capw-dot 1.1s infinite}.capw-typing i:nth-child(2){animation-delay:.18s}.capw-typing i:nth-child(3){animation-delay:.36s}
+@keyframes capw-dot{0%,60%,100%{transform:translateY(0);opacity:.5}30%{transform:translateY(-5px);opacity:1}}
+.capw-chips{display:flex;flex-wrap:wrap;gap:7px;margin:8px 0}
+.capw-chip{background:rgba(255,255,255,.6);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid var(--c);color:var(--d);border-radius:999px;padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-block;box-shadow:0 2px 6px rgba(0,0,0,.06);transition:transform .18s,background .18s,color .18s,box-shadow .18s}
+.capw-chip:hover{background:var(--c);color:#fff;transform:translateY(-2px);box-shadow:0 8px 16px rgba(0,0,0,.18)}
+.capw-card{display:flex;gap:12px;align-items:center;background:rgba(255,255,255,.85);border:1px solid rgba(0,0,0,.06);border-radius:16px;padding:9px;margin:7px 0;text-decoration:none;color:inherit;box-shadow:0 2px 8px rgba(0,0,0,.06);transition:transform .2s,box-shadow .2s,border-color .2s}
+.capw-card:hover{transform:translateY(-2px);box-shadow:0 10px 22px rgba(0,0,0,.14);border-color:var(--c)}
+.capw-card img{width:60px;height:60px;object-fit:cover;border-radius:12px;background:#e5e7eb;flex:none}
+.capw-card span{display:block;font-size:13px;font-weight:600}.capw-card em{display:block;font-style:normal;color:#059669;font-weight:800;font-size:13px;margin-top:2px}
+#capw form.capw-in{display:flex;gap:8px;padding:12px;border-top:1px solid rgba(0,0,0,.07);background:rgba(255,255,255,.7)}
+#capw form.capw-in input{flex:1;min-width:0;border:1px solid #d1d5db;border-radius:999px;padding:10px 16px;font:inherit;background:#fff;outline:0;transition:border-color .2s,box-shadow .2s}
+#capw form.capw-in input:focus{border-color:var(--c);box-shadow:0 0 0 3px rgba(37,99,235,.15)}
+#capw form.capw-in button{width:42px;height:42px;flex:none;border-radius:50%;border:0;background:linear-gradient(135deg,var(--c),var(--d));color:#fff;cursor:pointer;display:grid;place-items:center;transition:transform .2s}
+#capw form.capw-in button:hover{transform:scale(1.1) rotate(-8deg)}
+#capw form.capw-in button svg{width:18px;height:18px;transform:scaleX(-1)}
+.capw-form{background:rgba(255,255,255,.9);border:1px solid rgba(0,0,0,.06);border-radius:16px;padding:12px;margin:8px 0;display:flex;flex-direction:column;gap:8px}
+.capw-form input{border:1px solid #d1d5db;border-radius:12px;padding:9px 12px;font:inherit;outline:0}.capw-form input:focus{border-color:var(--c)}
+.capw-form button{background:linear-gradient(135deg,var(--c),var(--d));color:#fff;border:0;border-radius:12px;padding:10px;cursor:pointer;font:inherit;font-weight:700;transition:transform .15s}.capw-form button:hover{transform:translateY(-1px)}
+@media(max-width:480px){#capw{left:8px;bottom:8px;width:calc(100vw - 16px);height:calc(100vh - 16px);max-height:none;border-radius:18px}#capw-hi{display:none}}
+@media(prefers-reduced-motion:reduce){#capw-root *{animation:none!important;transition:none!important}}
 </style>
-<button id="capw-btn" type="button" aria-label="چت‌بات"><span>🤖</span><span><?php echo esc_html( $cfg['title'] ); ?></span></button>
+<div id="capw-root">
+<button id="capw-btn" type="button" aria-label="<?php echo esc_attr( $cfg['title'] ); ?>">
+	<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.6 8.6 0 0 1-3.6-.8L3 21l1.9-5.1A8.4 8.4 0 0 1 3 11.5 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5z"/><circle cx="8.5" cy="11.5" r=".6" fill="currentColor"/><circle cx="12" cy="11.5" r=".6" fill="currentColor"/><circle cx="15.5" cy="11.5" r=".6" fill="currentColor"/></svg>
+	<span class="dot" id="capw-dot">1</span>
+	<span class="lbl"><?php echo esc_html( $cfg['title'] ); ?></span>
+</button>
+<div id="capw-hi"><b id="capw-hix">✕</b>سلام 👋 برای انتخاب قطعه مناسب خودرو کمک می‌خواهید؟</div>
 <div id="capw" role="dialog" aria-label="<?php echo esc_attr( $cfg['title'] ); ?>">
-	<header><b>🤖 <?php echo esc_html( $cfg['title'] ); ?></b><button type="button" id="capw-home" title="منوی اصلی">🏠</button><button type="button" id="capw-x" title="بستن">✕</button></header>
+	<header>
+		<div class="av">🤖</div>
+		<div class="tt"><b><?php echo esc_html( $cfg['title'] ); ?></b><small>آنلاین — پاسخگوی شما هستیم</small></div>
+		<button type="button" id="capw-home" title="منوی اصلی" aria-label="منوی اصلی">🏠</button>
+		<button type="button" id="capw-x" title="بستن" aria-label="بستن">✕</button>
+	</header>
 	<div id="capw-msgs"></div>
-	<form class="capw-in" id="capw-form"><input type="text" id="capw-q" placeholder="نام قطعه یا خودرو را بنویسید…" autocomplete="off"><button>ارسال</button></form>
+	<form class="capw-in" id="capw-form"><input type="text" id="capw-q" placeholder="نام قطعه یا خودرو را بنویسید…" autocomplete="off"><button aria-label="ارسال"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg></button></form>
+</div>
 </div>
 <script>
 (function(){
-var API=<?php echo wp_json_encode( $cfg['api'] ); ?>,box=document.getElementById('capw'),btn=document.getElementById('capw-btn'),msgs=document.getElementById('capw-msgs'),started=false;
+var API=<?php echo wp_json_encode( $cfg['api'] ); ?>,root=document.getElementById('capw-root'),box=document.getElementById('capw'),btn=document.getElementById('capw-btn'),hi=document.getElementById('capw-hi'),msgs=document.getElementById('capw-msgs'),started=false;
+try{var ff=getComputedStyle(document.body).fontFamily;if(ff)root.style.setProperty('--f',ff)}catch(e){}
 function el(t,c,x){var e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e}
 function scroll(){msgs.scrollTop=msgs.scrollHeight}
 function bubble(t,me){var b=el('div','capw-b '+(me?'capw-me':'capw-bot'),t);msgs.appendChild(b);scroll()}
+function typing(){var b=el('div','capw-b capw-bot capw-typing');b.appendChild(el('i'));b.appendChild(el('i'));b.appendChild(el('i'));msgs.appendChild(b);scroll();return b}
 function call(p,cb){
-  var loading=el('div','capw-b capw-bot','…');msgs.appendChild(loading);scroll();
+  var loading=typing();
   fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)})
   .then(function(r){return r.json()}).then(function(d){loading.remove();render(d);if(cb)cb(d)})
-  .catch(function(){loading.textContent='⚠️ خطا در ارتباط؛ دوباره تلاش کنید.'});
+  .catch(function(){loading.remove();bubble('⚠️ خطا در ارتباط؛ دوباره تلاش کنید.',false)});
 }
 function chips(list){
   if(!list||!list.length)return;var w=el('div','capw-chips');
@@ -376,11 +429,14 @@ function leadform(note){
   f.onsubmit=function(e){e.preventDefault();b.disabled=true;
     call({a:'lead',name:n.value,phone:p.value,note:note,hp:h.value},function(d){if(d.err)b.disabled=false;else f.remove()})}
 }
-function open(){box.classList.add('open');btn.style.display='none';if(!started){started=true;call({a:'home'})}}
-function close(){box.classList.remove('open');btn.style.display='flex'}
-btn.onclick=open;document.getElementById('capw-x').onclick=close;
+function hideHi(){hi.classList.remove('show')}
+function open(){hideHi();document.getElementById('capw-dot').style.display='none';box.classList.add('open');btn.style.display='none';if(!started){started=true;call({a:'home'})}}
+function close(){box.classList.remove('open');btn.style.display='grid'}
+btn.onclick=open;hi.onclick=open;document.getElementById('capw-x').onclick=close;
+document.getElementById('capw-hix').onclick=function(e){e.stopPropagation();hideHi()};
 document.getElementById('capw-home').onclick=function(){call({a:'home'})};
 document.getElementById('capw-form').onsubmit=function(e){e.preventDefault();var q=document.getElementById('capw-q');var v=q.value.trim();if(!v)return;bubble(v,true);q.value='';call({a:'search',q:v})};
+try{if(!sessionStorage.getItem('capw_hi')){setTimeout(function(){if(!box.classList.contains('open')){hi.classList.add('show');sessionStorage.setItem('capw_hi','1');setTimeout(hideHi,9000)}},4500)}}catch(e){}
 })();
 </script>
 		<?php

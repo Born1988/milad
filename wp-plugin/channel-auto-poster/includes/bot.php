@@ -617,7 +617,7 @@ class CAP_Bot {
 		return '' !== $a && (string) $a === (string) $chat;
 	}
 
-	/** خوش‌آمدگویی: عکس (اختیاری) + منوی اصلی + منوی سریع پایین صفحه */
+	/** خوش‌آمدگویی: عکس (اختیاری) + منوی اصلی با دکمه‌های شیشه‌ای (inline) */
 	private function welcome( $chat, $name ) {
 		$s = $this->s();
 		list( $text, $rows ) = $this->screen_home( $name );
@@ -629,13 +629,11 @@ class CAP_Bot {
 		if ( ! $sent ) {
 			$this->show( $chat, 0, array( $text, $rows ) );
 		}
-		$kb = array();
-		foreach ( array_chunk( array_keys( self::QUICK ), 2 ) as $row ) {
-			$kb[] = array_map( function ( $t ) {
-				return array( 'text' => $t );
-			}, $row );
+		// کیبورد معمولی پایین صفحه (اگر از نسخه قبل مانده) را پاک کن تا فقط دکمه‌های شیشه‌ای بمانند
+		$r = $this->tg( 'sendMessage', array( 'chat_id' => $chat, 'text' => '✨', 'reply_markup' => array( 'remove_keyboard' => true ) ) );
+		if ( ! empty( $r['result']['message_id'] ) ) {
+			$this->tg( 'deleteMessage', array( 'chat_id' => $chat, 'message_id' => $r['result']['message_id'] ) );
 		}
-		$this->tg( 'sendMessage', array( 'chat_id' => $chat, 'text' => '👇 منوی سریع پایین صفحه فعال شد', 'reply_markup' => array( 'keyboard' => $kb, 'resize_keyboard' => true, 'is_persistent' => true ) ) );
 	}
 
 	/** ارسال همگانی توسط ادمین: /broadcast متن */
