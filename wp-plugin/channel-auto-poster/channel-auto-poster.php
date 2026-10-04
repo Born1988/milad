@@ -1,0 +1,325 @@
+<?php
+/**
+ * Plugin Name: Channel Auto Poster (تلگرام و بله)
+ * Description: ارسال خودکار مقالات جدید وردپرس به کانال تلگرام و بله. توکن ربات و شناسه کانال را در تنظیمات وارد کنید.
+ * Version: 1.0.0
+ * Author: isacofarsaei.ir
+ * Text Domain: channel-auto-poster
+ */
+
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
+class CAP_Channel_Auto_Poster {
+
+	const OPT      = 'cap_settings';
+	const META_SENT = '_cap_sent';
+	const META_SKIP = '_cap_skip';
+
+	/** آدرس پایه API هر پیام‌رسان (بله با تلگرام سازگار است) */
+	const ENDPOINTS = array(
+		'telegram' => 'https://api.telegram.org/bot',
+		'bale'     => 'https://tapi.bale.ai/bot',
+	);
+
+	public function __construct() {
+		add_action( 'admin_menu', array( $this, 'menu' ) );
+		add_action( 'admin_init', array( $this, 'register_settings' ) );
+		add_action( 'transition_post_status', array( $this, 'on_transition' ), 10, 3 );
+		add_action( 'add_meta_boxes', array( $this, 'meta_box' ) );
+		add_action( 'save_post', array( $this, 'save_meta' ) );
+		add_action( 'cap_send_post', array( $this, 'send_post' ) );
+		add_action( 'admin_post_cap_test', array( $this, 'handle_test' ) );
+		add_action( 'admin_post_cap_resend', array( $this, 'handle_resend' ) );
+	}
+
+	/* ---------------------------------------------------------------- تنظیمات */
+
+	private function settings() {
+		return wp_parse_args(
+			get_option( self::OPT, array() ),
+			array(
+				'tg_enabled' => 0,
+				'tg_token'   => '',
+				'tg_chat'    => '',
+				'bl_enabled' => 0,
+				'bl_token'   => '',
+				'bl_chat'    => '',
+				'post_types' => array( 'post' ),
+				'send_image' => 1,
+				'template'   => "📰 <b>{title}</b>\n\n{excerpt}\n\n🔗 {link}\n\n{hashtags}",
+				'excerpt_len' => 250,
+			)
+		);
+	}
+
+	public function menu() {
+		add_options_page( 'ارسال به کانال', 'ارسال به کانال', 'manage_options', 'cap-settings', array( $this, 'settings_page' ) );
+	}
+
+	public function register_settings() {
+		register_setting( 'cap_group', self::OPT, array( 'sanitize_callback' => array( $this, 'sanitize' ) ) );
+	}
+
+	public function sanitize( $in ) {
+		$out = array();
+		foreach ( array( 'tg_enabled', 'bl_enabled', 'send_image' ) as $k ) {
+			$out[ $k ] = empty( $in[ $k ] ) ? 0 : 1;
+		}
+		foreach ( array( 'tg_token', 'tg_chat', 'bl_token', 'bl_chat' ) as $k ) {
+			$out[ $k ] = isset( $in[ $k ] ) ? trim( sanitize_text_field( $in[ $k ] ) ) : '';
+		}
+		$out['post_types']  = ! empty( $in['post_types'] ) && is_array( $in['post_types'] ) ? array_map( 'sanitize_key', $in['post_types'] ) : array( 'post' );
+		$out['template']    = isset( $in['template'] ) ? wp_kses( $in['template'], array( 'b' => array(), 'i' => array(), 'u' => array(), 'a' => array( 'href' => array() ), 'code' => array() ) ) : '';
+		$out['excerpt_len'] = max( 50, min( 800, (int) ( $in['excerpt_len'] ?? 250 ) ) );
+		return $out;
+	}
+
+	public function settings_page() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			return;
+		}
+		$s    = $this->settings();
+		$name = self::OPT;
+		?>
+		<div class="wrap" dir="rtl" style="text-align:right">
+			<h1>ارسال خودکار مقالات به کانال تلگرام و بله</h1>
+
+			<?php if ( isset( $_GET['cap_msg'] ) ) : // phpcs:ignore ?>
+				<div class="notice notice-info"><p><?php echo esc_html( wp_unslash( $_GET['cap_msg'] ) ); // phpcs:ignore ?></p></div>
+			<?php endif; ?>
+
+			<form method="post" action="options.php">
+				<?php settings_fields( 'cap_group' ); ?>
+
+				<h2>تلگرام</h2>
+				<table class="form-table">
+					<tr><th>فعال</th><td><label><input type="checkbox" name="<?php echo $name; ?>[tg_enabled]" value="1" <?php checked( $s['tg_enabled'] ); ?>> ارسال به تلگرام</label></td></tr>
+					<tr><th>توکن ربات (API Token)</th><td><input type="text" class="regular-text" style="direction:ltr" name="<?php echo $name; ?>[tg_token]" value="<?php echo esc_attr( $s['tg_token'] ); ?>" placeholder="123456:ABC-DEF..."><p class="description">از @BotFather دریافت کنید. ربات را در کانال ادمین کنید.</p></td></tr>
+					<tr><th>شناسه کانال</th><td><input type="text" class="regular-text" style="direction:ltr" name="<?php echo $name; ?>[tg_chat]" value="<?php echo esc_attr( $s['tg_chat'] ); ?>" placeholder="@mychannel یا -100123456789"></td></tr>
+				</table>
+
+				<h2>بله</h2>
+				<table class="form-table">
+					<tr><th>فعال</th><td><label><input type="checkbox" name="<?php echo $name; ?>[bl_enabled]" value="1" <?php checked( $s['bl_enabled'] ); ?>> ارسال به بله</label></td></tr>
+					<tr><th>توکن ربات (API Token)</th><td><input type="text" class="regular-text" style="direction:ltr" name="<?php echo $name; ?>[bl_token]" value="<?php echo esc_attr( $s['bl_token'] ); ?>" placeholder="توکن از @botfather بله"><p class="description">از ربات «بات‌فادر» در بله دریافت کنید و ربات را ادمین کانال کنید.</p></td></tr>
+					<tr><th>شناسه کانال</th><td><input type="text" class="regular-text" style="direction:ltr" name="<?php echo $name; ?>[bl_chat]" value="<?php echo esc_attr( $s['bl_chat'] ); ?>" placeholder="@mychannel یا شناسه عددی"></td></tr>
+				</table>
+
+				<h2>تنظیمات پیام</h2>
+				<table class="form-table">
+					<tr><th>نوع نوشته‌ها</th><td>
+						<?php foreach ( get_post_types( array( 'public' => true ), 'objects' ) as $pt ) : if ( 'attachment' === $pt->name ) { continue; } ?>
+							<label style="margin-left:12px"><input type="checkbox" name="<?php echo $name; ?>[post_types][]" value="<?php echo esc_attr( $pt->name ); ?>" <?php checked( in_array( $pt->name, (array) $s['post_types'], true ) ); ?>> <?php echo esc_html( $pt->labels->name ); ?></label>
+						<?php endforeach; ?>
+					</td></tr>
+					<tr><th>ارسال تصویر شاخص</th><td><label><input type="checkbox" name="<?php echo $name; ?>[send_image]" value="1" <?php checked( $s['send_image'] ); ?>> تصویر شاخص همراه پیام ارسال شود</label></td></tr>
+					<tr><th>طول خلاصه</th><td><input type="number" name="<?php echo $name; ?>[excerpt_len]" value="<?php echo esc_attr( $s['excerpt_len'] ); ?>" min="50" max="800"> کاراکتر</td></tr>
+					<tr><th>قالب پیام</th><td>
+						<textarea name="<?php echo $name; ?>[template]" rows="7" class="large-text"><?php echo esc_textarea( $s['template'] ); ?></textarea>
+						<p class="description">متغیرها: <code>{title}</code> <code>{excerpt}</code> <code>{link}</code> <code>{hashtags}</code> <code>{category}</code> <code>{author}</code> — تگ‌های مجاز: &lt;b&gt; &lt;i&gt; &lt;u&gt; &lt;a&gt; &lt;code&gt;</p>
+					</td></tr>
+				</table>
+				<?php submit_button( 'ذخیره تنظیمات' ); ?>
+			</form>
+
+			<hr>
+			<h2>تست اتصال</h2>
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+				<input type="hidden" name="action" value="cap_test">
+				<?php wp_nonce_field( 'cap_test' ); ?>
+				<?php submit_button( 'ارسال پیام آزمایشی به کانال‌ها', 'secondary' ); ?>
+			</form>
+		</div>
+		<?php
+	}
+
+	/* ---------------------------------------------------------------- متاباکس */
+
+	public function meta_box() {
+		foreach ( (array) $this->settings()['post_types'] as $pt ) {
+			add_meta_box( 'cap_box', 'ارسال به کانال', array( $this, 'meta_box_html' ), $pt, 'side' );
+		}
+	}
+
+	public function meta_box_html( $post ) {
+		wp_nonce_field( 'cap_meta', 'cap_meta_nonce' );
+		$sent = get_post_meta( $post->ID, self::META_SENT, true );
+		echo '<label><input type="checkbox" name="cap_skip" value="1" ' . checked( get_post_meta( $post->ID, self::META_SKIP, true ), '1', false ) . '> برای این نوشته ارسال نشود</label>';
+		if ( $sent ) {
+			echo '<p>✅ ارسال شده در ' . esc_html( $sent ) . '</p>';
+			if ( 'publish' === $post->post_status ) {
+				$url = wp_nonce_url( admin_url( 'admin-post.php?action=cap_resend&post=' . $post->ID ), 'cap_resend_' . $post->ID );
+				echo '<p><a class="button" href="' . esc_url( $url ) . '">ارسال مجدد</a></p>';
+			}
+		}
+	}
+
+	public function save_meta( $post_id ) {
+		if ( ! isset( $_POST['cap_meta_nonce'] ) || ! wp_verify_nonce( $_POST['cap_meta_nonce'], 'cap_meta' ) ) { // phpcs:ignore
+			return;
+		}
+		if ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) {
+			return;
+		}
+		if ( ! current_user_can( 'edit_post', $post_id ) ) {
+			return;
+		}
+		if ( ! empty( $_POST['cap_skip'] ) ) {
+			update_post_meta( $post_id, self::META_SKIP, '1' );
+		} else {
+			delete_post_meta( $post_id, self::META_SKIP );
+		}
+	}
+
+	/* ---------------------------------------------------------------- ارسال */
+
+	public function on_transition( $new, $old, $post ) {
+		if ( 'publish' !== $new || 'publish' === $old ) {
+			return;
+		}
+		if ( ! in_array( $post->post_type, (array) $this->settings()['post_types'], true ) ) {
+			return;
+		}
+		if ( get_post_meta( $post->ID, self::META_SENT, true ) || get_post_meta( $post->ID, self::META_SKIP, true ) ) {
+			return;
+		}
+		// اجرا بعد از ذخیرهٔ کامل نوشته (متا و تصویر شاخص) تا ارسال، ویرایش را کند نکند
+		wp_schedule_single_event( time() + 5, 'cap_send_post', array( $post->ID ) );
+		if ( ! defined( 'DOING_CRON' ) ) {
+			spawn_cron();
+		}
+	}
+
+	public function send_post( $post_id ) {
+		$post = get_post( $post_id );
+		if ( ! $post || 'publish' !== $post->post_status ) {
+			return array();
+		}
+		$s       = $this->settings();
+		$caption = $this->build_message( $post, $s );
+		$image   = '';
+		if ( $s['send_image'] && has_post_thumbnail( $post ) ) {
+			$image = get_the_post_thumbnail_url( $post, 'large' );
+		}
+
+		$results = array();
+		if ( $s['tg_enabled'] && $s['tg_token'] && $s['tg_chat'] ) {
+			$results['telegram'] = $this->send( 'telegram', $s['tg_token'], $s['tg_chat'], $caption, $image );
+		}
+		if ( $s['bl_enabled'] && $s['bl_token'] && $s['bl_chat'] ) {
+			$results['bale'] = $this->send( 'bale', $s['bl_token'], $s['bl_chat'], $caption, $image );
+		}
+
+		if ( $results && in_array( true, $results, true ) ) {
+			update_post_meta( $post_id, self::META_SENT, current_time( 'mysql' ) );
+		}
+		return $results;
+	}
+
+	private function build_message( $post, $s ) {
+		$excerpt = has_excerpt( $post ) ? $post->post_excerpt : $post->post_content;
+		$excerpt = wp_strip_all_tags( strip_shortcodes( $excerpt ) );
+		$excerpt = trim( preg_replace( '/\s+/u', ' ', $excerpt ) );
+		if ( mb_strlen( $excerpt ) > $s['excerpt_len'] ) {
+			$excerpt = mb_substr( $excerpt, 0, $s['excerpt_len'] ) . '…';
+		}
+
+		$tags = array();
+		foreach ( (array) get_the_tags( $post->ID ) as $t ) {
+			if ( $t && isset( $t->name ) ) {
+				$tags[] = '#' . preg_replace( '/[\s\-]+/u', '_', $t->name );
+			}
+		}
+		$cats = get_the_category( $post->ID );
+
+		$map = array(
+			'{title}'    => esc_html( html_entity_decode( get_the_title( $post ), ENT_QUOTES, 'UTF-8' ) ),
+			'{excerpt}'  => esc_html( $excerpt ),
+			'{link}'     => esc_url( get_permalink( $post ) ),
+			'{hashtags}' => esc_html( implode( ' ', array_slice( $tags, 0, 6 ) ) ),
+			'{category}' => $cats ? esc_html( $cats[0]->name ) : '',
+			'{author}'   => esc_html( get_the_author_meta( 'display_name', $post->post_author ) ),
+		);
+		return trim( strtr( $s['template'], $map ) );
+	}
+
+	/** ارسال به API تلگرام/بله. true در صورت موفقیت، در غیر این صورت متن خطا */
+	private function send( $platform, $token, $chat, $text, $image = '' ) {
+		$base = self::ENDPOINTS[ $platform ] . $token . '/';
+
+		if ( $image ) {
+			// کپشن تصویر در تلگرام حداکثر ۱۰۲۴ کاراکتر است
+			$res = $this->call( $base . 'sendPhoto', array(
+				'chat_id'    => $chat,
+				'photo'      => $image,
+				'caption'    => mb_substr( $text, 0, 1000 ),
+				'parse_mode' => 'HTML',
+			) );
+			if ( true === $res ) {
+				return true;
+			}
+			// اگر تصویر مشکل داشت، فقط متن را بفرست
+		}
+		return $this->call( $base . 'sendMessage', array(
+			'chat_id'    => $chat,
+			'text'       => mb_substr( $text, 0, 4000 ),
+			'parse_mode' => 'HTML',
+		) );
+	}
+
+	private function call( $url, $body ) {
+		$r = wp_remote_post( $url, array( 'timeout' => 20, 'body' => $body ) );
+		if ( is_wp_error( $r ) ) {
+			error_log( '[channel-auto-poster] ' . $r->get_error_message() );
+			return $r->get_error_message();
+		}
+		$data = json_decode( wp_remote_retrieve_body( $r ), true );
+		if ( ! empty( $data['ok'] ) ) {
+			return true;
+		}
+		$err = $data['description'] ?? ( 'HTTP ' . wp_remote_retrieve_response_code( $r ) );
+		error_log( '[channel-auto-poster] ' . $err );
+		return $err;
+	}
+
+	/* ---------------------------------------------------------------- اکشن‌های ادمین */
+
+	private function back( $msg ) {
+		wp_safe_redirect( add_query_arg( 'cap_msg', rawurlencode( $msg ), admin_url( 'options-general.php?page=cap-settings' ) ) );
+		exit;
+	}
+
+	public function handle_test() {
+		check_admin_referer( 'cap_test' );
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( 'دسترسی ندارید' );
+		}
+		$s   = $this->settings();
+		$txt = '✅ پیام آزمایشی از ' . esc_html( get_bloginfo( 'name' ) );
+		$out = array();
+		if ( $s['tg_token'] && $s['tg_chat'] ) {
+			$r     = $this->send( 'telegram', $s['tg_token'], $s['tg_chat'], $txt );
+			$out[] = 'تلگرام: ' . ( true === $r ? 'موفق' : $r );
+		}
+		if ( $s['bl_token'] && $s['bl_chat'] ) {
+			$r     = $this->send( 'bale', $s['bl_token'], $s['bl_chat'], $txt );
+			$out[] = 'بله: ' . ( true === $r ? 'موفق' : $r );
+		}
+		$this->back( $out ? implode( ' | ', $out ) : 'ابتدا توکن و شناسه کانال را ذخیره کنید.' );
+	}
+
+	public function handle_resend() {
+		$id = isset( $_GET['post'] ) ? (int) $_GET['post'] : 0;
+		check_admin_referer( 'cap_resend_' . $id );
+		if ( ! current_user_can( 'edit_post', $id ) ) {
+			wp_die( 'دسترسی ندارید' );
+		}
+		$this->send_post( $id );
+		wp_safe_redirect( get_edit_post_link( $id, 'raw' ) );
+		exit;
+	}
+}
+
+new CAP_Channel_Auto_Poster();
