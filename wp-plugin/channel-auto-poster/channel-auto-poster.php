@@ -53,8 +53,16 @@ class CAP_Channel_Auto_Poster {
 				'bl_chat'    => '',
 				'post_types' => array( 'post', 'product' ),
 				'send_image' => 1,
-				'template_product' => "🛒 <b>{title}</b>\n\n💰 قیمت: {price}\n\n{excerpt}\n\n🔗 {link}\n\n{hashtags}",
-				'template'   => "📰 <b>{title}</b>\n\n{excerpt}\n\n🔗 {link}\n\n{hashtags}",
+				'use_short'     => 1,
+				'footer_on'     => 1,
+				'support_phone' => '09191242492',
+				'shop_phone'    => '02133971622',
+				'support_tg'    => '@thegifted',
+				'address'       => 'تهران، خیابان امیر کبیر، نبش کوچه سراج الملک، پلاک 425',
+				'bot_id'        => 'isacofarsaei_bot',
+				'footer'        => "➖➖➖➖➖➖➖➖➖➖\n📞 پشتیبان: {support_phone}\n☎️ فروشگاه: {shop_phone}\n💬 تلگرام پشتیبان: {support_tg}\n📍 آدرس: {address}\n\n🤖✨ <a href=\"{bot_url}\">راهنمای انتخاب محصول</a> 👈 {bot_handle}",
+				'template_product' => "🛒🔥 <b>{title}</b>\n\n💰 قیمت: {price}\n\n📝 {excerpt}\n\n🛍 مشاهده و خرید: {link}\n\n{hashtags}",
+				'template'   => "📰✨ <b>{title}</b>\n\n📝 {excerpt}\n\n🔗 ادامه مطلب: {link}\n\n{hashtags}",
 				'excerpt_len' => 250,
 			)
 		);
@@ -77,6 +85,14 @@ class CAP_Channel_Auto_Poster {
 			$out[ $k ] = isset( $in[ $k ] ) ? trim( sanitize_text_field( $in[ $k ] ) ) : '';
 		}
 		$out['post_types']  = ! empty( $in['post_types'] ) && is_array( $in['post_types'] ) ? array_map( 'sanitize_key', $in['post_types'] ) : array( 'post' );
+		foreach ( array( 'use_short', 'footer_on' ) as $k ) {
+			$out[ $k ] = empty( $in[ $k ] ) ? 0 : 1;
+		}
+		foreach ( array( 'support_phone', 'shop_phone', 'support_tg', 'address' ) as $k ) {
+			$out[ $k ] = isset( $in[ $k ] ) ? trim( sanitize_text_field( $in[ $k ] ) ) : '';
+		}
+		$out['bot_id'] = isset( $in['bot_id'] ) ? ltrim( trim( sanitize_text_field( $in['bot_id'] ) ), '@' ) : '';
+		$out['footer'] = isset( $in['footer'] ) ? wp_kses( $in['footer'], array( 'b' => array(), 'i' => array(), 'u' => array(), 'a' => array( 'href' => array() ), 'code' => array() ) ) : '';
 		$out['template_product'] = isset( $in['template_product'] ) ? wp_kses( $in['template_product'], array( 'b' => array(), 'i' => array(), 'u' => array(), 'a' => array( 'href' => array() ), 'code' => array() ) ) : '';
 		$out['template']    = isset( $in['template'] ) ? wp_kses( $in['template'], array( 'b' => array(), 'i' => array(), 'u' => array(), 'a' => array( 'href' => array() ), 'code' => array() ) ) : '';
 		$out['excerpt_len'] = max( 50, min( 800, (int) ( $in['excerpt_len'] ?? 250 ) ) );
@@ -132,6 +148,20 @@ class CAP_Channel_Auto_Poster {
 						<p class="description">برای محصولات ووکامرس. متغیر اضافه: <code>{price}</code> (قیمت)</p>
 					</td></tr>
 				</table>
+				<h2>🔗 لینک و اطلاعات تماس (انتهای هر پیام)</h2>
+				<table class="form-table">
+					<tr><th>لینک کوتاه</th><td><label><input type="checkbox" name="<?php echo $name; ?>[use_short]" value="1" <?php checked( $s['use_short'] ); ?>> به‌جای آدرس بلند مقاله، لینک کوتاه وردپرس (<code>?p=123</code>) فرستاده شود</label></td></tr>
+					<tr><th>افزودن فوتر</th><td><label><input type="checkbox" name="<?php echo $name; ?>[footer_on]" value="1" <?php checked( $s['footer_on'] ); ?>> انتهای هر پیام، اطلاعات تماس و لینک ربات اضافه شود</label></td></tr>
+					<tr><th>📞 شماره پشتیبان</th><td><input type="text" class="regular-text" style="direction:ltr" name="<?php echo $name; ?>[support_phone]" value="<?php echo esc_attr( $s['support_phone'] ); ?>"></td></tr>
+					<tr><th>☎️ شماره مغازه</th><td><input type="text" class="regular-text" style="direction:ltr" name="<?php echo $name; ?>[shop_phone]" value="<?php echo esc_attr( $s['shop_phone'] ); ?>"></td></tr>
+					<tr><th>💬 آیدی تلگرام پشتیبان</th><td><input type="text" class="regular-text" style="direction:ltr" name="<?php echo $name; ?>[support_tg]" value="<?php echo esc_attr( $s['support_tg'] ); ?>"></td></tr>
+					<tr><th>📍 آدرس فروشگاه</th><td><input type="text" class="large-text" name="<?php echo $name; ?>[address]" value="<?php echo esc_attr( $s['address'] ); ?>"></td></tr>
+					<tr><th>🤖 آیدی ربات راهنما</th><td><input type="text" class="regular-text" style="direction:ltr" name="<?php echo $name; ?>[bot_id]" value="<?php echo esc_attr( $s['bot_id'] ); ?>" placeholder="isacofarsaei_bot"></td></tr>
+					<tr><th>قالب فوتر</th><td>
+						<textarea name="<?php echo $name; ?>[footer]" rows="8" class="large-text"><?php echo esc_textarea( $s['footer'] ); ?></textarea>
+						<p class="description">متغیرها: <code>{support_phone}</code> <code>{shop_phone}</code> <code>{support_tg}</code> <code>{address}</code> <code>{bot_url}</code> <code>{bot_handle}</code></p>
+					</td></tr>
+				</table>
 				<?php submit_button( 'ذخیره تنظیمات' ); ?>
 			</form>
 
@@ -153,6 +183,7 @@ class CAP_Channel_Auto_Poster {
 						<textarea name="custom_text" rows="5" class="large-text" placeholder="متن پیام (تگ‌های &lt;b&gt; &lt;i&gt; &lt;a&gt; مجاز است). اگر مقاله انتخاب شده باشد، این فیلد نادیده گرفته می‌شود."></textarea>
 						<p><input type="url" name="custom_image" class="regular-text" style="direction:ltr" placeholder="آدرس تصویر (اختیاری)"></p>
 					</td></tr>
+					<tr><th>فوتر</th><td><label><input type="checkbox" name="with_footer" value="1" checked> اطلاعات تماس و لینک ربات به انتهای پیام اضافه شود</label></td></tr>
 					<tr><th>ارسال به</th><td>
 						<label><input type="checkbox" name="targets[]" value="telegram" checked> تلگرام</label>
 						<label style="margin-right:12px"><input type="checkbox" name="targets[]" value="bale" checked> بله</label>
@@ -270,7 +301,8 @@ class CAP_Channel_Auto_Poster {
 			return array();
 		}
 		$s       = $this->settings();
-		$caption = $this->build_message( $post, $s );
+		$full    = $this->build_message( $post, $s, 3900 );
+		$caption = $this->build_message( $post, $s, 1000 );
 		$image   = '';
 		if ( $s['send_image'] && has_post_thumbnail( $post ) ) {
 			$image = get_the_post_thumbnail_url( $post, 'large' );
@@ -278,10 +310,10 @@ class CAP_Channel_Auto_Poster {
 
 		$results = array();
 		if ( ( $only ? in_array( 'telegram', $only, true ) : $s['tg_enabled'] ) && $s['tg_token'] && $s['tg_chat'] ) {
-			$results['telegram'] = $this->send( 'telegram', $s['tg_token'], $s['tg_chat'], $caption, $image );
+			$results['telegram'] = $this->send( 'telegram', $s['tg_token'], $s['tg_chat'], $full, $image, $caption );
 		}
 		if ( ( $only ? in_array( 'bale', $only, true ) : $s['bl_enabled'] ) && $s['bl_token'] && $s['bl_chat'] ) {
-			$results['bale'] = $this->send( 'bale', $s['bl_token'], $s['bl_chat'], $caption, $image );
+			$results['bale'] = $this->send( 'bale', $s['bl_token'], $s['bl_chat'], $full, $image, $caption );
 		}
 
 		if ( $results && in_array( true, $results, true ) ) {
@@ -290,15 +322,34 @@ class CAP_Channel_Auto_Poster {
 		return $results;
 	}
 
-	private function build_message( $post, $s ) {
+	/** فوتر: اطلاعات تماس + لینک ربات */
+	private function footer( $s ) {
+		if ( empty( $s['footer_on'] ) || '' === trim( $s['footer'] ) ) {
+			return '';
+		}
+		$bot = $s['bot_id'];
+		return trim( strtr( $s['footer'], array(
+			'{support_phone}' => esc_html( $s['support_phone'] ),
+			'{shop_phone}'    => esc_html( $s['shop_phone'] ),
+			'{support_tg}'    => esc_html( $s['support_tg'] ),
+			'{address}'       => esc_html( $s['address'] ),
+			'{bot_url}'       => $bot ? esc_url( 'https://t.me/' . $bot ) : '',
+			'{bot_handle}'    => $bot ? '@' . esc_html( $bot ) : '',
+		) ) );
+	}
+
+	/** طول قابل‌مشاهده پیام (بدون تگ‌های HTML) */
+	private function visible_len( $html ) {
+		return mb_strlen( html_entity_decode( wp_strip_all_tags( $html ), ENT_QUOTES, 'UTF-8' ) );
+	}
+
+	/** متن پیام + فوتر؛ خلاصه آنقدر کوتاه می‌شود که کل پیام در $limit بگنجد (فوتر هرگز بریده نمی‌شود) */
+	private function build_message( $post, $s, $limit = 3900 ) {
 		$excerpt = has_excerpt( $post ) ? $post->post_excerpt : $post->post_content;
 		$excerpt = wp_strip_all_tags( strip_shortcodes( $excerpt ) );
 		$excerpt = trim( preg_replace( '/\s+/u', ' ', $excerpt ) );
-		if ( mb_strlen( $excerpt ) > $s['excerpt_len'] ) {
-			$excerpt = mb_substr( $excerpt, 0, $s['excerpt_len'] ) . '…';
-		}
 
-		$tags = array();
+		$tags       = array();
 		$is_product = 'product' === $post->post_type;
 		$tag_terms  = $is_product ? get_the_terms( $post->ID, 'product_tag' ) : get_the_tags( $post->ID );
 		foreach ( (array) $tag_terms as $t ) {
@@ -313,28 +364,48 @@ class CAP_Channel_Auto_Poster {
 			$price = trim( html_entity_decode( wp_strip_all_tags( wc_get_product( $post->ID )->get_price_html() ), ENT_QUOTES, 'UTF-8' ) );
 		}
 
-		$map = array(
-			'{title}'    => esc_html( html_entity_decode( get_the_title( $post ), ENT_QUOTES, 'UTF-8' ) ),
-			'{excerpt}'  => esc_html( $excerpt ),
-			'{link}'     => esc_url( get_permalink( $post ) ),
-			'{hashtags}' => esc_html( implode( ' ', array_slice( $tags, 0, 6 ) ) ),
-			'{category}' => $cats ? esc_html( $cats[0]->name ) : '',
-			'{price}'    => esc_html( $price ),
-			'{author}'   => esc_html( get_the_author_meta( 'display_name', $post->post_author ) ),
-		);
-		return trim( strtr( $is_product ? $s['template_product'] : $s['template'], $map ) );
+		$link = $s['use_short'] ? wp_get_shortlink( $post->ID ) : '';
+		if ( ! $link ) {
+			$link = get_permalink( $post );
+		}
+
+		$tpl    = $is_product ? $s['template_product'] : $s['template'];
+		$footer = $this->footer( $s );
+		$len    = (int) $s['excerpt_len'];
+
+		do {
+			$ex = mb_strlen( $excerpt ) > $len ? rtrim( mb_substr( $excerpt, 0, $len ) ) . '…' : $excerpt;
+			$body = trim( strtr( $tpl, array(
+				'{title}'    => esc_html( html_entity_decode( get_the_title( $post ), ENT_QUOTES, 'UTF-8' ) ),
+				'{excerpt}'  => esc_html( $ex ),
+				'{link}'     => esc_url( $link ),
+				'{hashtags}' => esc_html( implode( ' ', array_slice( $tags, 0, 6 ) ) ),
+				'{category}' => $cats ? esc_html( $cats[0]->name ) : '',
+				'{price}'    => esc_html( $price ),
+				'{author}'   => esc_html( get_the_author_meta( 'display_name', $post->post_author ) ),
+			) ) );
+			$msg = $footer ? $body . "\n\n" . $footer : $body;
+			$len -= 40;
+		} while ( $this->visible_len( $msg ) > $limit && $len > 0 );
+
+		return $msg;
 	}
 
 	/** ارسال به API تلگرام/بله. true در صورت موفقیت، در غیر این صورت متن خطا */
-	private function send( $platform, $token, $chat, $text, $image = '' ) {
+	private function send( $platform, $token, $chat, $text, $image = '', $caption = null ) {
 		$base = self::ENDPOINTS[ $platform ] . $token . '/';
 
+		if ( $image && null === $caption && mb_strlen( $text ) > 1000 ) {
+			// متن بلند: ابتدا عکس بدون کپشن، سپس متن کامل (تا فوتر بریده نشود)
+			$this->call( $base . 'sendPhoto', array( 'chat_id' => $chat, 'photo' => $image ) );
+			$image = '';
+		}
 		if ( $image ) {
 			// کپشن تصویر در تلگرام حداکثر ۱۰۲۴ کاراکتر است
 			$res = $this->call( $base . 'sendPhoto', array(
 				'chat_id'    => $chat,
 				'photo'      => $image,
-				'caption'    => mb_substr( $text, 0, 1000 ),
+				'caption'    => null === $caption ? mb_substr( $text, 0, 1000 ) : $caption,
 				'parse_mode' => 'HTML',
 			) );
 			if ( true === $res ) {
@@ -344,7 +415,7 @@ class CAP_Channel_Auto_Poster {
 		}
 		return $this->call( $base . 'sendMessage', array(
 			'chat_id'    => $chat,
-			'text'       => mb_substr( $text, 0, 4000 ),
+			'text'       => $text,
 			'parse_mode' => 'HTML',
 		) );
 	}
@@ -452,6 +523,9 @@ class CAP_Channel_Auto_Poster {
 			$this->back( 'یک مقاله انتخاب کنید یا متن پیام را بنویسید.' );
 		}
 		$s       = $this->settings();
+		if ( ! empty( $_POST['with_footer'] ) && $this->footer( $s ) ) { // phpcs:ignore
+			$text .= "\n\n" . $this->footer( $s );
+		}
 		$results = array();
 		if ( in_array( 'telegram', $targets, true ) && $s['tg_token'] && $s['tg_chat'] ) {
 			$results['telegram'] = $this->send( 'telegram', $s['tg_token'], $s['tg_chat'], $text, $img );
