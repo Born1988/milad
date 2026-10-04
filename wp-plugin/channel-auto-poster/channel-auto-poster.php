@@ -56,6 +56,13 @@ class CAP_Channel_Auto_Poster {
 				'bl_chat'    => '',
 				'post_types' => array( 'post', 'product' ),
 				'send_image' => 1,
+				'bot_welcome'   => "سلام {name} عزیز 👋✨\nبه ربات <b>راهنمای انتخاب محصول</b> خوش آمدید 🚗🔧\n\nاینجا می‌توانید:\n🛒 قطعهٔ مناسب خودروی خود را پیدا کنید\n🔧 مشکل خودرو را عیب‌یابی کنید\n💬 با کارشناس صحبت کنید\n\n👇 یکی را انتخاب کنید یا نام قطعه را بنویسید 🔎",
+				'bot_image'     => '',
+				'hours'         => '',
+				'channel_link'  => '',
+				'shop_lat'      => '',
+				'shop_lng'      => '',
+				'post_buttons'  => 1,
 				'bot_enabled'   => 0,
 				'bot_token'     => '',
 				'bot_admin'     => '',
@@ -91,6 +98,12 @@ class CAP_Channel_Auto_Poster {
 			$out[ $k ] = isset( $in[ $k ] ) ? trim( sanitize_text_field( $in[ $k ] ) ) : '';
 		}
 		$out['post_types']  = ! empty( $in['post_types'] ) && is_array( $in['post_types'] ) ? array_map( 'sanitize_key', $in['post_types'] ) : array( 'post' );
+		$out['bot_welcome'] = isset( $in['bot_welcome'] ) ? wp_kses( $in['bot_welcome'], array( 'b' => array(), 'i' => array() ) ) : '';
+		$out['bot_image']   = isset( $in['bot_image'] ) ? esc_url_raw( trim( $in['bot_image'] ) ) : '';
+		foreach ( array( 'hours', 'channel_link', 'shop_lat', 'shop_lng' ) as $k ) {
+			$out[ $k ] = isset( $in[ $k ] ) ? trim( sanitize_text_field( $in[ $k ] ) ) : '';
+		}
+		$out['post_buttons'] = empty( $in['post_buttons'] ) ? 0 : 1;
 		$out['bot_enabled'] = empty( $in['bot_enabled'] ) ? 0 : 1;
 		$out['bot_token']   = isset( $in['bot_token'] ) ? trim( sanitize_text_field( $in['bot_token'] ) ) : '';
 		$out['bot_admin']   = isset( $in['bot_admin'] ) ? trim( sanitize_text_field( $in['bot_admin'] ) ) : '';
@@ -160,6 +173,7 @@ class CAP_Channel_Auto_Poster {
 				<h2>🔗 لینک و اطلاعات تماس (انتهای هر پیام)</h2>
 				<table class="form-table">
 					<tr><th>لینک کوتاه</th><td><label><input type="checkbox" name="<?php echo $name; ?>[use_short]" value="1" <?php checked( $s['use_short'] ); ?>> به‌جای آدرس بلند مقاله، لینک کوتاه وردپرس (<code>?p=123</code>) فرستاده شود</label></td></tr>
+					<tr><th>دکمه‌های شیشه‌ای</th><td><label><input type="checkbox" name="<?php echo $name; ?>[post_buttons]" value="1" <?php checked( $s['post_buttons'] ); ?>> زیر هر پیام دکمه «مشاهده/خرید»، «راهنمای انتخاب محصول» و «پشتیبان» نمایش داده شود</label></td></tr>
 					<tr><th>افزودن فوتر</th><td><label><input type="checkbox" name="<?php echo $name; ?>[footer_on]" value="1" <?php checked( $s['footer_on'] ); ?>> انتهای هر پیام، اطلاعات تماس و لینک ربات اضافه شود</label></td></tr>
 					<tr><th>📞 شماره پشتیبان</th><td><input type="text" class="regular-text" style="direction:ltr" name="<?php echo $name; ?>[support_phone]" value="<?php echo esc_attr( $s['support_phone'] ); ?>"></td></tr>
 					<tr><th>☎️ شماره مغازه</th><td><input type="text" class="regular-text" style="direction:ltr" name="<?php echo $name; ?>[shop_phone]" value="<?php echo esc_attr( $s['shop_phone'] ); ?>"></td></tr>
@@ -314,6 +328,7 @@ class CAP_Channel_Auto_Poster {
 		$s       = $this->settings();
 		$full    = $this->build_message( $post, $s, 3900 );
 		$caption = $this->build_message( $post, $s, 1000 );
+		$btns    = $this->post_buttons( $post, $s );
 		$image   = '';
 		if ( $s['send_image'] && has_post_thumbnail( $post ) ) {
 			$image = get_the_post_thumbnail_url( $post, 'large' );
@@ -321,10 +336,10 @@ class CAP_Channel_Auto_Poster {
 
 		$results = array();
 		if ( ( $only ? in_array( 'telegram', $only, true ) : $s['tg_enabled'] ) && $s['tg_token'] && $s['tg_chat'] ) {
-			$results['telegram'] = $this->send( 'telegram', $s['tg_token'], $s['tg_chat'], $full, $image, $caption );
+			$results['telegram'] = $this->send( 'telegram', $s['tg_token'], $s['tg_chat'], $full, $image, $caption, $btns );
 		}
 		if ( ( $only ? in_array( 'bale', $only, true ) : $s['bl_enabled'] ) && $s['bl_token'] && $s['bl_chat'] ) {
-			$results['bale'] = $this->send( 'bale', $s['bl_token'], $s['bl_chat'], $full, $image, $caption );
+			$results['bale'] = $this->send( 'bale', $s['bl_token'], $s['bl_chat'], $full, $image, $caption, $btns );
 		}
 
 		if ( $results && in_array( true, $results, true ) ) {
@@ -403,8 +418,18 @@ class CAP_Channel_Auto_Poster {
 	}
 
 	/** ارسال به API تلگرام/بله. true در صورت موفقیت، در غیر این صورت متن خطا */
-	private function send( $platform, $token, $chat, $text, $image = '', $caption = null ) {
+	private function send( $platform, $token, $chat, $text, $image = '', $caption = null, $buttons = array() ) {
+		$res = $this->send_once( $platform, $token, $chat, $text, $image, $caption, $buttons );
+		if ( true !== $res && $buttons ) {
+			// اگر پیام‌رسان دکمه‌ها را نپذیرفت، بدون دکمه دوباره امتحان کن
+			$res = $this->send_once( $platform, $token, $chat, $text, $image, $caption, array() );
+		}
+		return $res;
+	}
+
+	private function send_once( $platform, $token, $chat, $text, $image, $caption, $buttons ) {
 		$base = self::ENDPOINTS[ $platform ] . $token . '/';
+		$kb   = $buttons ? array( 'reply_markup' => wp_json_encode( array( 'inline_keyboard' => $buttons ), JSON_UNESCAPED_UNICODE ) ) : array();
 
 		if ( $image && null === $caption && mb_strlen( $text ) > 1000 ) {
 			// متن بلند: ابتدا عکس بدون کپشن، سپس متن کامل (تا فوتر بریده نشود)
@@ -418,7 +443,7 @@ class CAP_Channel_Auto_Poster {
 				'photo'      => $image,
 				'caption'    => null === $caption ? mb_substr( $text, 0, 1000 ) : $caption,
 				'parse_mode' => 'HTML',
-			) );
+			) + $kb );
 			if ( true === $res ) {
 				return true;
 			}
@@ -428,7 +453,28 @@ class CAP_Channel_Auto_Poster {
 			'chat_id'    => $chat,
 			'text'       => $text,
 			'parse_mode' => 'HTML',
-		) );
+		) + $kb );
+	}
+
+	/** دکمه‌های زیر پیام کانال */
+	private function post_buttons( $post, $s ) {
+		if ( empty( $s['post_buttons'] ) ) {
+			return array();
+		}
+		$link = $s['use_short'] ? wp_get_shortlink( $post->ID ) : '';
+		$link = $link ? $link : get_permalink( $post );
+		$rows = array( array( array( 'text' => 'product' === $post->post_type ? '🛒 مشاهده و خرید' : '📖 ادامه مطلب', 'url' => $link ) ) );
+		$row2 = array();
+		if ( $s['bot_id'] ) {
+			$row2[] = array( 'text' => '🤖 راهنمای انتخاب محصول', 'url' => 'https://t.me/' . $s['bot_id'] );
+		}
+		if ( $s['support_tg'] ) {
+			$row2[] = array( 'text' => '💬 پشتیبان', 'url' => 'https://t.me/' . ltrim( $s['support_tg'], '@' ) );
+		}
+		if ( $row2 ) {
+			$rows[] = $row2;
+		}
+		return $rows;
 	}
 
 	private function call( $url, $body ) {

@@ -17,6 +17,16 @@ class CAP_Bot {
 	const SECRET = 'cap_bot_secret';
 	const PER_PAGE = 8;
 
+	/** دکمه‌های منوی سریع پایین صفحه → مسیر */
+	const QUICK = array(
+		'🛒 محصولات'      => 'c:0:1',
+		'🔧 عیب‌یابی'     => 't',
+		'🔥 پرفروش‌ها'    => 'l:top:1',
+		'💥 تخفیف‌ها'     => 'l:sale:1',
+		'📞 تماس و آدرس'  => 'contact',
+		'👨‍🔧 کارشناس'    => 'agent',
+	);
+
 	public function __construct() {
 		add_action( 'init', array( $this, 'register_types' ) );
 		add_action( 'admin_init', array( $this, 'maybe_seed' ) );
@@ -109,7 +119,12 @@ class CAP_Bot {
 		<table class="form-table">
 			<tr><th>فعال</th><td><label><input type="checkbox" name="<?php echo $name; ?>[bot_enabled]" value="1" <?php checked( $s['bot_enabled'] ); ?>> ربات به پیام‌ها پاسخ بدهد</label></td></tr>
 			<tr><th>توکن ربات</th><td><input type="text" class="regular-text" style="direction:ltr" name="<?php echo $name; ?>[bot_token]" value="<?php echo esc_attr( $s['bot_token'] ); ?>" placeholder="توکن @<?php echo esc_attr( $s['bot_id'] ); ?> از BotFather"><p class="description">توکن خودِ ربات (نه ربات کانال). پس از ذخیره، «ثبت webhook» را پایین همین صفحه بزنید.</p></td></tr>
-			<tr><th>شناسه عددی ادمین</th><td><input type="text" class="regular-text" style="direction:ltr" name="<?php echo $name; ?>[bot_admin]" value="<?php echo esc_attr( $s['bot_admin'] ); ?>"><p class="description">درخواست‌های کارشناس به این چت می‌آید. در ربات <code>/myid</code> بزنید تا شناسه را ببینید.</p></td></tr>
+			<tr><th>متن خوش‌آمدگویی</th><td><textarea name="<?php echo $name; ?>[bot_welcome]" rows="6" class="large-text"><?php echo esc_textarea( $s['bot_welcome'] ); ?></textarea><p class="description"><code>{name}</code> = نام کاربر. تگ‌های مجاز: &lt;b&gt; &lt;i&gt;</p></td></tr>
+			<tr><th>عکس خوش‌آمدگویی</th><td><input type="url" class="large-text" style="direction:ltr" name="<?php echo $name; ?>[bot_image]" value="<?php echo esc_attr( $s['bot_image'] ); ?>" placeholder="https://isacofarsaei.ir/wp-content/uploads/banner.jpg"><p class="description">آدرس مستقیم عکس (اختیاری) — با /start همراه منو نمایش داده می‌شود.</p></td></tr>
+			<tr><th>ساعت کاری</th><td><input type="text" class="regular-text" name="<?php echo $name; ?>[hours]" value="<?php echo esc_attr( $s['hours'] ); ?>" placeholder="شنبه تا پنجشنبه ۹ تا ۱۸"></td></tr>
+			<tr><th>کانال تلگرام</th><td><input type="text" class="regular-text" style="direction:ltr" name="<?php echo $name; ?>[channel_link]" value="<?php echo esc_attr( $s['channel_link'] ); ?>" placeholder="@mychannel"></td></tr>
+			<tr><th>📍 مختصات مغازه</th><td>عرض: <input type="text" size="12" style="direction:ltr" name="<?php echo $name; ?>[shop_lat]" value="<?php echo esc_attr( $s['shop_lat'] ); ?>" placeholder="35.6773"> &nbsp; طول: <input type="text" size="12" style="direction:ltr" name="<?php echo $name; ?>[shop_lng]" value="<?php echo esc_attr( $s['shop_lng'] ); ?>" placeholder="51.4237"><p class="description">برای دکمه «مسیریابی روی نقشه». از گوگل‌مپ روی مغازه راست‌کلیک و مختصات را کپی کنید (اختیاری).</p></td></tr>
+			<tr><th>شناسه عددی ادمین</th><td><input type="text" class="regular-text" style="direction:ltr" name="<?php echo $name; ?>[bot_admin]" value="<?php echo esc_attr( $s['bot_admin'] ); ?>"><p class="description">درخواست‌های کارشناس به این چت می‌آید. در ربات <code>/myid</code> بزنید تا شناسه را ببینید. دستورات ادمین: <code>/stats</code> و <code>/broadcast متن</code> (ارسال همگانی).</p></td></tr>
 		</table>
 		<?php
 	}
@@ -249,24 +264,137 @@ class CAP_Bot {
 		return '';
 	}
 
+	private function tme( $h ) {
+		return 'https://t.me/' . ltrim( trim( $h ), '@' );
+	}
+
+	private function users_add( $chat ) {
+		$u = (array) get_option( 'cap_users', array() );
+		if ( ! isset( $u[ $chat ] ) ) {
+			$u[ $chat ] = 1;
+			update_option( 'cap_users', $u, false );
+		}
+	}
+
 	private function contact_text() {
 		$s = $this->s();
-		$l = array( '📞 <b>راه‌های ارتباطی</b>' );
+		$l = array( '📞✨ <b>راه‌های ارتباطی</b>', '' );
 		if ( $s['support_phone'] ) { $l[] = '📞 پشتیبان: ' . esc_html( $s['support_phone'] ); }
 		if ( $s['shop_phone'] )    { $l[] = '☎️ فروشگاه: ' . esc_html( $s['shop_phone'] ); }
 		if ( $s['support_tg'] )    { $l[] = '💬 تلگرام پشتیبان: ' . esc_html( $s['support_tg'] ); }
 		if ( $s['address'] )       { $l[] = '📍 آدرس: ' . esc_html( $s['address'] ); }
+		if ( $s['hours'] )         { $l[] = '🕘 ساعت کاری: ' . esc_html( $s['hours'] ); }
 		return implode( "\n", $l );
 	}
 
+	private function screen_contact() {
+		$s    = $this->s();
+		$rows = array();
+		if ( $s['support_tg'] ) {
+			$rows[] = array( array( 'text' => '💬 گفتگو با پشتیبان در تلگرام', 'url' => $this->tme( $s['support_tg'] ) ) );
+		}
+		if ( $s['shop_lat'] && $s['shop_lng'] ) {
+			$rows[] = array( $this->btn( '📍 مسیریابی روی نقشه', 'map' ) );
+		}
+		$mid = array();
+		if ( $s['channel_link'] ) {
+			$mid[] = array( 'text' => '📢 کانال ما', 'url' => ( 0 === strpos( $s['channel_link'], 'http' ) ? $s['channel_link'] : $this->tme( $s['channel_link'] ) ) );
+		}
+		$mid[] = array( 'text' => '🌐 وب‌سایت', 'url' => home_url( '/' ) );
+		$rows[] = $mid;
+		$rows[] = array( $this->btn( '👨‍🔧 درخواست تماس کارشناس', 'agent' ) );
+		$rows[] = $this->home_row();
+		return array( $this->contact_text(), $rows );
+	}
+
 	/** منوی اصلی */
-	private function screen_home() {
+	private function screen_home( $name = '' ) {
+		$s = $this->s();
+		$wc = function_exists( 'wc_get_product_ids_on_sale' );
 		$rows = array(
 			array( $this->btn( '🛒 انتخاب محصول', 'c:0:1' ), $this->btn( '🔧 عیب‌یابی مشکل خودرو', 't' ) ),
-			array( $this->btn( '📞 تماس و آدرس', 'contact' ), $this->btn( '👨‍🔧 کارشناس', 'agent' ) ),
-			array( array( 'text' => '🌐 ورود به سایت', 'url' => home_url( '/' ) ) ),
+			$wc ? array( $this->btn( '🔥 پرفروش‌ها', 'l:top:1' ), $this->btn( '💥 تخفیف‌ها', 'l:sale:1' ) ) : array( $this->btn( '🆕 جدیدترین‌ها', 'l:new:1' ) ),
+			$wc ? array( $this->btn( '🆕 جدیدترین‌ها', 'l:new:1' ), $this->btn( '📞 تماس و آدرس', 'contact' ) ) : array( $this->btn( '📞 تماس و آدرس', 'contact' ) ),
+			array( $this->btn( '👨‍🔧 درخواست کارشناس', 'agent' ), array( 'text' => '🌐 سایت', 'url' => home_url( '/' ) ) ),
 		);
-		return array( "سلام 👋✨\nبه ربات <b>راهنمای انتخاب محصول</b> خوش آمدید.\n\n🚘 از منو انتخاب کنید، یا نام قطعه/خودرو را بنویسید تا برایتان جستجو کنم 🔎", $rows );
+		$text = str_replace( '{name}', esc_html( $name ?: 'دوست' ), $s['bot_welcome'] ?: 'سلام {name} 👋 به ربات راهنمای انتخاب محصول خوش آمدید.' );
+		return array( $text, $rows );
+	}
+
+	private function product_rows( $posts ) {
+		$rows = array();
+		foreach ( $posts as $p ) {
+			$pr     = $this->price( $p->ID );
+			$rows[] = array( $this->btn( '🛍 ' . $this->clip( get_the_title( $p ) . ( $pr ? ' — ' . $pr : '' ) ), 'm:' . $p->ID ) );
+		}
+		return $rows;
+	}
+
+	/** لیست‌های ویژه: جدیدترین / پرفروش / تخفیف‌دار */
+	private function screen_list( $mode, $page ) {
+		$args = array( 'post_type' => $this->ptype(), 'post_status' => 'publish', 'posts_per_page' => self::PER_PAGE, 'paged' => $page );
+		$map  = array( 'new' => '🆕 جدیدترین محصولات', 'top' => '🔥 پرفروش‌ترین‌ها', 'sale' => '💥 محصولات تخفیف‌دار' );
+		if ( 'top' === $mode ) {
+			$args['meta_key'] = 'total_sales'; // phpcs:ignore
+			$args['orderby']  = 'meta_value_num';
+			$args['order']    = 'DESC';
+		} elseif ( 'sale' === $mode && function_exists( 'wc_get_product_ids_on_sale' ) ) {
+			$args['post__in'] = array_merge( array( 0 ), wc_get_product_ids_on_sale() );
+		} else {
+			$mode = 'new';
+		}
+		$q    = new WP_Query( $args );
+		$rows = $this->product_rows( $q->posts );
+		if ( $q->max_num_pages > 1 ) {
+			$nav = array();
+			if ( $page > 1 ) { $nav[] = $this->btn( '◀️ قبلی', "l:$mode:" . ( $page - 1 ) ); }
+			$nav[] = $this->btn( "📄 $page/{$q->max_num_pages}", 'x' );
+			if ( $page < $q->max_num_pages ) { $nav[] = $this->btn( 'بعدی ▶️', "l:$mode:" . ( $page + 1 ) ); }
+			$rows[] = $nav;
+		}
+		$rows[] = $this->home_row();
+		return array( '<b>' . $map[ $mode ] . "</b>\n" . ( $q->posts ? 'روی هر مورد بزنید تا کارت محصول باز شود 👇' : 'فعلاً موردی نیست.' ), $rows );
+	}
+
+	/** کارت محصول (با عکس) */
+	private function send_product_card( $chat, $id ) {
+		$p = get_post( $id );
+		if ( ! $p || 'publish' !== $p->post_status ) {
+			return;
+		}
+		$link = wp_get_shortlink( $id ) ?: get_permalink( $p );
+		$lines = array( '🛍 <b>' . esc_html( get_the_title( $p ) ) . '</b>' );
+		$price = $this->price( $id );
+		if ( $price ) {
+			$lines[] = '💰 قیمت: ' . esc_html( $price );
+		}
+		if ( function_exists( 'wc_get_product' ) && ( $wp = wc_get_product( $id ) ) ) {
+			$lines[] = $wp->is_in_stock() ? '✅ موجود' : '⛔️ ناموجود (برای استعلام «سؤال از کارشناس» را بزنید)';
+			if ( $wp->get_sku() ) {
+				$lines[] = '🔖 کد: ' . esc_html( $wp->get_sku() );
+			}
+			$short = trim( wp_strip_all_tags( $wp->get_short_description() ) );
+		} else {
+			$short = trim( wp_strip_all_tags( has_excerpt( $p ) ? $p->post_excerpt : $p->post_content ) );
+		}
+		if ( $short ) {
+			$lines[] = '';
+			$lines[] = '📝 ' . esc_html( $this->clip( preg_replace( '/\s+/u', ' ', $short ), 220 ) );
+		}
+		$text = implode( "\n", $lines );
+		$rows = array(
+			array( array( 'text' => '🛒 مشاهده و خرید از سایت', 'url' => $link ) ),
+			array( $this->btn( '❓ سؤال / استعلام از کارشناس', 'agent:' . $id ) ),
+			$this->home_row(),
+		);
+		$img = get_the_post_thumbnail_url( $p, 'large' );
+		if ( $img ) {
+			$r = $this->tg( 'sendPhoto', array( 'chat_id' => $chat, 'photo' => $img, 'caption' => $text, 'parse_mode' => 'HTML', 'reply_markup' => array( 'inline_keyboard' => $rows ) ) );
+			if ( ! empty( $r['ok'] ) ) {
+				return;
+			}
+		}
+		$this->tg( 'sendMessage', array( 'chat_id' => $chat, 'text' => $text, 'parse_mode' => 'HTML', 'reply_markup' => array( 'inline_keyboard' => $rows ) ) );
 	}
 
 	/** دسته‌بندی محصولات: زیردسته‌ها + محصولات */
@@ -297,9 +425,8 @@ class CAP_Bot {
 					'tax_query' => array( array( 'taxonomy' => $tax, 'field' => 'term_id', 'terms' => $term_id, 'include_children' => false ) ),
 					'no_found_rows' => false,
 				) );
-				foreach ( $q->posts as $p ) {
-					$pr = $this->price( $p->ID );
-					$rows[] = array( array( 'text' => '🛍 ' . $this->clip( get_the_title( $p ) . ( $pr ? ' — ' . $pr : '' ) ), 'url' => wp_get_shortlink( $p->ID ) ?: get_permalink( $p ) ) );
+				foreach ( $this->product_rows( $q->posts ) as $r ) {
+					$rows[] = $r;
 				}
 				if ( $q->max_num_pages > 1 ) {
 					$nav = array();
@@ -311,7 +438,7 @@ class CAP_Bot {
 				if ( ! $kb && ! $q->posts ) {
 					$title .= "\n\nمحصولی در این دسته نیست. «کارشناس» را بزنید یا جستجو کنید.";
 				} elseif ( $q->posts ) {
-					$title .= "\n\n🛒 محصولات این دسته (روی هر مورد بزنید تا صفحه محصول باز شود):";
+					$title .= "\n\n🛒 محصولات این دسته (روی هر مورد بزنید تا کارت محصول با عکس و قیمت باز شود):";
 				}
 			}
 			$rows[] = array( $this->btn( '⬅️ برگشت', 'c:' . $parent . ':1' ) );
@@ -376,11 +503,56 @@ class CAP_Bot {
 				return isset( $p[1] ) ? $this->screen_problems( (int) $p[1] ) : $this->screen_parts();
 			case 'p':
 				return $this->screen_problem( (int) ( $p[1] ?? 0 ) );
+			case 'l':
+				return $this->screen_list( (string) ( $p[1] ?? 'new' ), max( 1, (int) ( $p[2] ?? 1 ) ) );
 			case 'contact':
-				return array( $this->contact_text(), array( $this->home_row() ) );
+				return $this->screen_contact();
 			default:
 				return $this->screen_home();
 		}
+	}
+
+	private function is_admin( $chat ) {
+		$a = $this->s()['bot_admin'];
+		return '' !== $a && (string) $a === (string) $chat;
+	}
+
+	/** خوش‌آمدگویی: عکس (اختیاری) + منوی اصلی + منوی سریع پایین صفحه */
+	private function welcome( $chat, $name ) {
+		$s = $this->s();
+		list( $text, $rows ) = $this->screen_home( $name );
+		$sent = false;
+		if ( $s['bot_image'] && mb_strlen( wp_strip_all_tags( $text ) ) < 1000 ) {
+			$r    = $this->tg( 'sendPhoto', array( 'chat_id' => $chat, 'photo' => $s['bot_image'], 'caption' => $text, 'parse_mode' => 'HTML', 'reply_markup' => array( 'inline_keyboard' => $rows ) ) );
+			$sent = ! empty( $r['ok'] );
+		}
+		if ( ! $sent ) {
+			$this->show( $chat, 0, array( $text, $rows ) );
+		}
+		$kb = array();
+		foreach ( array_chunk( array_keys( self::QUICK ), 2 ) as $row ) {
+			$kb[] = array_map( function ( $t ) {
+				return array( 'text' => $t );
+			}, $row );
+		}
+		$this->tg( 'sendMessage', array( 'chat_id' => $chat, 'text' => '👇 منوی سریع پایین صفحه فعال شد', 'reply_markup' => array( 'keyboard' => $kb, 'resize_keyboard' => true, 'is_persistent' => true ) ) );
+	}
+
+	/** ارسال همگانی توسط ادمین: /broadcast متن */
+	private function broadcast( $chat, $text ) {
+		if ( '' === $text ) {
+			$this->tg( 'sendMessage', array( 'chat_id' => $chat, 'text' => "نحوه استفاده:\n/broadcast متن پیام برای همه کاربران ربات" ) );
+			return;
+		}
+		$ok = 0;
+		foreach ( array_slice( array_keys( (array) get_option( 'cap_users', array() ) ), 0, 500 ) as $uid ) {
+			$r = $this->tg( 'sendMessage', array( 'chat_id' => $uid, 'text' => $text, 'disable_web_page_preview' => true ) );
+			if ( ! empty( $r['ok'] ) ) {
+				$ok++;
+			}
+			usleep( 50000 );
+		}
+		$this->tg( 'sendMessage', array( 'chat_id' => $chat, 'text' => "✅ برای $ok کاربر ارسال شد." ) );
 	}
 
 	private function show( $chat, $mid, $screen ) {
@@ -403,9 +575,8 @@ class CAP_Bot {
 	private function search( $chat, $q ) {
 		$rows = array();
 		$prod = new WP_Query( array( 'post_type' => $this->ptype(), 'post_status' => 'publish', 's' => $q, 'posts_per_page' => 6 ) );
-		foreach ( $prod->posts as $p ) {
-			$pr = $this->price( $p->ID );
-			$rows[] = array( array( 'text' => '🛍 ' . $this->clip( get_the_title( $p ) . ( $pr ? ' — ' . $pr : '' ) ), 'url' => wp_get_shortlink( $p->ID ) ?: get_permalink( $p ) ) );
+		foreach ( $this->product_rows( $prod->posts ) as $r ) {
+			$rows[] = $r;
 		}
 		$prb = new WP_Query( array( 'post_type' => self::CPT, 'post_status' => 'publish', 's' => $q, 'posts_per_page' => 4 ) );
 		foreach ( $prb->posts as $p ) {
@@ -460,6 +631,16 @@ class CAP_Bot {
 			if ( 'x' === $data ) {
 				return new WP_REST_Response( array( 'ok' => true ), 200 );
 			}
+			if ( 0 === strpos( $data, 'm:' ) ) {
+				$this->tg( 'sendChatAction', array( 'chat_id' => $chat, 'action' => 'upload_photo' ) );
+				$this->send_product_card( $chat, (int) substr( $data, 2 ) );
+				return new WP_REST_Response( array( 'ok' => true ), 200 );
+			}
+			if ( 'map' === $data ) {
+				$sv = $this->s();
+				$this->tg( 'sendVenue', array( 'chat_id' => $chat, 'latitude' => (float) $sv['shop_lat'], 'longitude' => (float) $sv['shop_lng'], 'title' => get_bloginfo( 'name' ), 'address' => $sv['address'] ) );
+				return new WP_REST_Response( array( 'ok' => true ), 200 );
+			}
 			if ( 'solved' === $data ) {
 				$this->tg( 'editMessageText', array( 'chat_id' => $chat, 'message_id' => $mid, 'text' => '🙏✨ خوشحالیم که مشکل حل شد. سفر امن!', 'reply_markup' => array( 'inline_keyboard' => array( $this->home_row() ) ) ) );
 			} elseif ( 0 === strpos( $data, 'agent' ) ) {
@@ -493,9 +674,22 @@ class CAP_Bot {
 					$this->tg( 'sendMessage', array( 'chat_id' => $chat, 'text' => '✅ درخواست شما ثبت شد؛ کارشناس به‌زودی تماس می‌گیرد 🙏' . ( $sp ? "\n📞 $sp" : '' ), 'reply_markup' => array( 'remove_keyboard' => true ) ) );
 					$this->show( $chat, 0, $this->screen_home() );
 				}
+			} elseif ( '/stats' === $text && $this->is_admin( $chat ) ) {
+				$this->tg( 'sendMessage', array( 'chat_id' => $chat, 'text' => "📊 آمار ربات\n👥 کاربران: " . count( (array) get_option( 'cap_users', array() ) ) . "\n📩 درخواست‌های کارشناس: " . count( (array) get_option( self::LEADS, array() ) ) ) );
+			} elseif ( 0 === strpos( $text, '/broadcast' ) && $this->is_admin( $chat ) ) {
+				$this->broadcast( $chat, trim( substr( $text, 10 ) ) );
 			} elseif ( '' === $text || '/start' === $text || '/menu' === $text ) {
-				$this->show( $chat, 0, $this->screen_home() );
+				$this->users_add( $chat );
+				$this->welcome( $chat, $m['from']['first_name'] ?? '' );
+			} elseif ( isset( self::QUICK[ $text ] ) ) {
+				$to = self::QUICK[ $text ];
+				if ( 'agent' === $to ) {
+					$this->ask_phone( $chat, '—' );
+				} else {
+					$this->show( $chat, 0, $this->dispatch( $to ) );
+				}
 			} else {
+				$this->tg( 'sendChatAction', array( 'chat_id' => $chat, 'action' => 'typing' ) );
 				$this->search( $chat, $text );
 			}
 		}
