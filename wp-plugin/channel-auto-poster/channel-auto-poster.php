@@ -44,6 +44,16 @@ class CAP_Channel_Auto_Poster {
 
 	/* ---------------------------------------------------------------- تنظیمات */
 
+	/** آدرس پایه API (برای تلگرام قابل تغییر با پروکسی/رله، مثلاً وقتی هاست api.telegram.org را مسدود کرده) */
+	public function api_base( $platform ) {
+		if ( 'telegram' === $platform ) {
+			$s = $this->settings();
+			$u = trim( (string) $s['tg_api'] );
+			return ( '' !== $u ? rtrim( $u, '/' ) : 'https://api.telegram.org' ) . '/bot';
+		}
+		return self::ENDPOINTS[ $platform ];
+	}
+
 	public function settings() {
 		return wp_parse_args(
 			get_option( self::OPT, array() ),
@@ -63,6 +73,11 @@ class CAP_Channel_Auto_Poster {
 				'shop_lat'      => '',
 				'shop_lng'      => '',
 				'post_buttons'  => 1,
+				'tg_api'        => '',
+				'widget_on'     => 1,
+				'widget_title'  => 'راهنمای خرید',
+				'widget_color'  => '#2563eb',
+				'widget_hello'  => "سلام 👋✨ به راهنمای خرید خوش آمدید!\nقطعه مناسب خودروی خود را پیدا کنید یا مشکل خودرو را عیب‌یابی کنید.",
 				'bot_enabled'   => 0,
 				'bot_token'     => '',
 				'bot_admin'     => '',
@@ -92,7 +107,7 @@ class CAP_Channel_Auto_Poster {
 	public function sanitize( $in ) {
 		$out = $this->sanitize_all( $in );
 		$old = $this->settings();
-		$bot = array( 'bot_enabled', 'bot_token', 'bot_admin', 'bot_welcome', 'bot_image', 'hours', 'channel_link', 'shop_lat', 'shop_lng' );
+		$bot = array( 'tg_api', 'widget_on', 'widget_title', 'widget_color', 'widget_hello', 'bot_enabled', 'bot_token', 'bot_admin', 'bot_welcome', 'bot_image', 'hours', 'channel_link', 'shop_lat', 'shop_lng' );
 		if ( 'bot' === ( $in['_section'] ?? '' ) ) {
 			// فرم ربات: فقط فیلدهای ربات عوض شود
 			$res = $old;
@@ -122,6 +137,11 @@ class CAP_Channel_Auto_Poster {
 		foreach ( array( 'hours', 'channel_link', 'shop_lat', 'shop_lng' ) as $k ) {
 			$out[ $k ] = isset( $in[ $k ] ) ? trim( sanitize_text_field( $in[ $k ] ) ) : '';
 		}
+		$out['tg_api']        = isset( $in['tg_api'] ) ? untrailingslashit( esc_url_raw( trim( $in['tg_api'] ) ) ) : '';
+		$out['widget_on']     = empty( $in['widget_on'] ) ? 0 : 1;
+		$out['widget_title']  = isset( $in['widget_title'] ) ? sanitize_text_field( $in['widget_title'] ) : '';
+		$out['widget_color']  = isset( $in['widget_color'] ) && preg_match( '/^#[0-9a-fA-F]{6}$/', $in['widget_color'] ) ? $in['widget_color'] : '#2563eb';
+		$out['widget_hello']  = isset( $in['widget_hello'] ) ? sanitize_textarea_field( $in['widget_hello'] ) : '';
 		$out['post_buttons'] = empty( $in['post_buttons'] ) ? 0 : 1;
 		$out['bot_enabled'] = empty( $in['bot_enabled'] ) ? 0 : 1;
 		$out['bot_token']   = isset( $in['bot_token'] ) ? trim( sanitize_text_field( $in['bot_token'] ) ) : '';
@@ -451,7 +471,7 @@ class CAP_Channel_Auto_Poster {
 	}
 
 	private function send_once( $platform, $token, $chat, $text, $image, $caption, $buttons ) {
-		$base = self::ENDPOINTS[ $platform ] . $token . '/';
+		$base = $this->api_base( $platform ) . $token . '/';
 		$kb   = $buttons ? array( 'reply_markup' => wp_json_encode( array( 'inline_keyboard' => $buttons ), JSON_UNESCAPED_UNICODE ) ) : array();
 
 		if ( $image && null === $caption && mb_strlen( $text ) > 1000 ) {
@@ -618,6 +638,8 @@ class CAP_Channel_Auto_Poster {
 }
 
 require_once __DIR__ . '/includes/bot.php';
+require_once __DIR__ . '/includes/widget.php';
 
 new CAP_Channel_Auto_Poster();
 new CAP_Bot();
+new CAP_Widget();

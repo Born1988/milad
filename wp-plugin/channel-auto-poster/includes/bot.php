@@ -11,6 +11,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class CAP_Bot {
 
+	public static $inst;
+
 	const CPT   = 'cap_problem';
 	const TAX   = 'cap_part';
 	const LEADS = 'cap_leads';
@@ -28,6 +30,7 @@ class CAP_Bot {
 	);
 
 	public function __construct() {
+		self::$inst = $this;
 		add_action( 'init', array( $this, 'register_types' ) );
 		add_action( 'admin_init', array( $this, 'maybe_seed' ) );
 		add_action( 'rest_api_init', array( $this, 'routes' ) );
@@ -121,6 +124,12 @@ class CAP_Bot {
 			<tr><th>ساعت کاری</th><td><input type="text" class="regular-text" name="<?php echo $name; ?>[hours]" value="<?php echo esc_attr( $s['hours'] ); ?>" placeholder="شنبه تا پنجشنبه ۹ تا ۱۸"></td></tr>
 			<tr><th>کانال تلگرام</th><td><input type="text" class="regular-text" style="direction:ltr" name="<?php echo $name; ?>[channel_link]" value="<?php echo esc_attr( $s['channel_link'] ); ?>" placeholder="@mychannel"></td></tr>
 			<tr><th>📍 مختصات مغازه</th><td>عرض: <input type="text" size="12" style="direction:ltr" name="<?php echo $name; ?>[shop_lat]" value="<?php echo esc_attr( $s['shop_lat'] ); ?>" placeholder="35.6773"> &nbsp; طول: <input type="text" size="12" style="direction:ltr" name="<?php echo $name; ?>[shop_lng]" value="<?php echo esc_attr( $s['shop_lng'] ); ?>" placeholder="51.4237"><p class="description">برای دکمه «مسیریابی روی نقشه». از گوگل‌مپ روی مغازه راست‌کلیک و مختصات را کپی کنید (اختیاری).</p></td></tr>
+			<tr><th>آدرس API / پروکسی تلگرام</th><td><input type="url" class="large-text" style="direction:ltr" name="<?php echo $name; ?>[tg_api]" value="<?php echo esc_attr( $s['tg_api'] ); ?>" placeholder="https://api.telegram.org"><p class="description">خالی = مستقیم. اگر هاست شما تلگرام را مسدود کرده، آدرس یک رله/پروکسی (مثلاً Cloudflare Worker) بگذارید. برای ربات و ارسال به کانال استفاده می‌شود.</p></td></tr>
+			<tr><td colspan="2"><h2>💬 چت‌بات روی سایت (سمت چپ)</h2></td></tr>
+			<tr><th>فعال</th><td><label><input type="checkbox" name="<?php echo $name; ?>[widget_on]" value="1" <?php checked( $s['widget_on'] ); ?>> دکمه شناور «راهنمای خرید» در سایت نمایش داده شود</label></td></tr>
+			<tr><th>عنوان دکمه</th><td><input type="text" class="regular-text" name="<?php echo $name; ?>[widget_title]" value="<?php echo esc_attr( $s['widget_title'] ); ?>"></td></tr>
+			<tr><th>رنگ</th><td><input type="color" name="<?php echo $name; ?>[widget_color]" value="<?php echo esc_attr( $s['widget_color'] ); ?>"></td></tr>
+			<tr><th>پیام خوش‌آمد</th><td><textarea name="<?php echo $name; ?>[widget_hello]" rows="3" class="large-text"><?php echo esc_textarea( $s['widget_hello'] ); ?></textarea></td></tr>
 			<tr><th>شناسه عددی ادمین</th><td><input type="text" class="regular-text" style="direction:ltr" name="<?php echo $name; ?>[bot_admin]" value="<?php echo esc_attr( $s['bot_admin'] ); ?>"><p class="description">درخواست‌های کارشناس به این چت می‌آید. در ربات <code>/myid</code> بزنید تا شناسه را ببینید. دستورات ادمین: <code>/stats</code> و <code>/broadcast متن</code> (ارسال همگانی).</p></td></tr>
 		</table>
 		<?php
@@ -164,8 +173,73 @@ class CAP_Bot {
 				<?php submit_button( 'ذخیره تنظیمات ربات' ); ?>
 			</form>
 			<?php $this->webhook_box(); ?>
+			<hr>
+			<h2>🔍 عیب‌یابی اتصال</h2>
+			<p><a class="button button-primary" href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin.php?page=cap-bot&diag=1' ), 'cap_diag' ) ); ?>">اجرای عیب‌یابی</a></p>
+			<?php
+			if ( isset( $_GET['diag'] ) && check_admin_referer( 'cap_diag' ) ) { // phpcs:ignore
+				echo '<table class="widefat striped" style="max-width:900px"><tbody>';
+				foreach ( $this->diagnose() as $row ) {
+					echo '<tr><td style="width:30px">' . ( $row[0] ? '✅' : '❌' ) . '</td><td>' . esc_html( $row[1] ) . ( ! $row[0] && $row[2] ? '<br><small style="color:#b32d2e">' . esc_html( $row[2] ) . '</small>' : '' ) . '</td></tr>';
+				}
+				echo '</tbody></table>';
+			}
+			if ( $s['bot_token'] ) :
+				$manual = CAP_Channel_Auto_Poster::$inst->api_base( 'telegram' ) . $s['bot_token'] . '/setWebhook?url=' . rawurlencode( $this->hook_url() ) . '&drop_pending_updates=true';
+				?>
+				<h3>ثبت دستی webhook (اگر دکمه بالا خطا داد)</h3>
+				<p>این لینک را در مرورگری که تلگرام در آن باز می‌شود (در صورت نیاز با VPN) باز کنید. باید <code>"ok":true</code> ببینید. این لینک حاوی توکن است؛ جایی منتشرش نکنید.</p>
+				<textarea readonly rows="3" class="large-text" style="direction:ltr" onclick="this.select()"><?php echo esc_textarea( $manual ); ?></textarea>
+			<?php endif; ?>
 		</div>
 		<?php
+	}
+
+	/** آدرس webhook همراه با کلید امنیتی (k) تا حتی اگر هدر سکرت حذف شد کار کند */
+	public function hook_url() {
+		return add_query_arg( 'k', $this->secret(), rest_url( 'cap/v1/bot' ) );
+	}
+
+	/** عیب‌یابی: چک‌لیست وضعیت اتصال */
+	private function diagnose() {
+		$s   = $this->s();
+		$out = array();
+		$add = function ( $ok, $label, $hint = '' ) use ( &$out ) {
+			$out[] = array( $ok, $label, $hint );
+		};
+		$add( ! empty( $s['bot_token'] ), 'توکن ربات ذخیره شده', 'توکن را وارد و «ذخیره تنظیمات ربات» را بزنید.' );
+		$add( ! empty( $s['bot_enabled'] ), 'تیک «فعال» روشن است', 'بدون تیک فعال، ربات جواب نمی‌دهد.' );
+		$add( is_ssl() || 0 === strpos( home_url(), 'https://' ), 'سایت با HTTPS است', 'تلگرام فقط به آدرس HTTPS پیام می‌فرستد.' );
+		if ( $s['bot_token'] ) {
+			$me = $this->tg( 'getMe' );
+			if ( ! empty( $me['ok'] ) ) {
+				$u = $me['result']['username'] ?? '';
+				$add( true, 'توکن معتبر است ← @' . $u );
+				if ( $s['bot_id'] && strcasecmp( $u, $s['bot_id'] ) ) {
+					$add( false, 'این توکن برای @' . $u . ' است، نه @' . $s['bot_id'], 'توکن ربات درست را وارد کنید.' );
+				}
+			} else {
+				$add( false, 'اتصال سرور به تلگرام ناموفق: ' . ( $me['description'] ?? '' ), 'اگر timeout/connection است، هاست تلگرام را مسدود کرده؛ «آدرس API پروکسی» را پر کنید. اگر Unauthorized است، توکن اشتباه/باطل‌شده است.' );
+			}
+			$wi = $this->tg( 'getWebhookInfo' );
+			if ( ! empty( $wi['ok'] ) ) {
+				$r   = $wi['result'];
+				$url = $r['url'] ?? '';
+				$add( '' !== $url && 0 === strpos( $url, rest_url( 'cap/v1/bot' ) ), 'webhook ثبت شده: ' . ( $url ? preg_replace( '/k=[a-f0-9]+/', 'k=***', $url ) : '(هیچ)' ), 'دکمه «ثبت webhook» را بزنید.' );
+				if ( ! empty( $r['last_error_message'] ) ) {
+					$add( false, 'آخرین خطای تلگرام هنگام ارسال به سایت: ' . $r['last_error_message'], 'مثلاً 403/404/timeout: فایروال، کلودفلر یا غیرفعال بودن REST API سایت را بررسی کنید.' );
+				}
+				$add( empty( $r['pending_update_count'] ), 'پیام‌های در صف: ' . (int) ( $r['pending_update_count'] ?? 0 ) );
+			}
+		}
+		$t = wp_remote_post( $this->hook_url(), array( 'timeout' => 15, 'headers' => array( 'Content-Type' => 'application/json' ), 'body' => '{}', 'sslverify' => false ) );
+		if ( is_wp_error( $t ) ) {
+			$add( false, 'خودِ سایت به آدرس webhook وصل نشد: ' . $t->get_error_message() );
+		} else {
+			$code = wp_remote_retrieve_response_code( $t );
+			$add( 200 === $code, 'آدرس webhook روی سایت پاسخ می‌دهد (HTTP ' . $code . ')', 'کد 404: پیوندهای یکتا را ذخیره کنید یا REST API بسته است. 403: افزونه امنیتی/فایروال.' );
+		}
+		return $out;
 	}
 
 	private function secret() {
@@ -192,7 +266,7 @@ class CAP_Bot {
 			$this->back( 'ابتدا توکن ربات را ذخیره کنید.' );
 		}
 		$r = $this->tg( 'setWebhook', array(
-			'url' => rest_url( 'cap/v1/bot' ), 'secret_token' => $this->secret(), 'allowed_updates' => array( 'message', 'callback_query' ),
+			'url' => $this->hook_url(), 'secret_token' => $this->secret(), 'allowed_updates' => array( 'message', 'callback_query' ), 'drop_pending_updates' => true,
 		) );
 		$this->tg( 'setMyCommands', array( 'commands' => array(
 			array( 'command' => 'start', 'description' => 'شروع / منوی اصلی' ),
@@ -239,7 +313,7 @@ class CAP_Bot {
 
 	private function tg( $method, $params = array() ) {
 		$s = $this->s();
-		$r = wp_remote_post( 'https://api.telegram.org/bot' . $s['bot_token'] . '/' . $method, array(
+		$r = wp_remote_post( CAP_Channel_Auto_Poster::$inst->api_base( 'telegram' ) . $s['bot_token'] . '/' . $method, array(
 			'timeout' => 15,
 			'headers' => array( 'Content-Type' => 'application/json' ),
 			'body'    => wp_json_encode( $params, JSON_UNESCAPED_UNICODE ),
@@ -622,6 +696,18 @@ class CAP_Bot {
 		) ) );
 	}
 
+	/** ثبت درخواست از چت‌بات سایت */
+	public function lead_from_site( $name, $phone, $note ) {
+		$s = $this->s();
+		$l = (array) get_option( self::LEADS, array() );
+		$l[] = array( 'id' => wp_generate_password( 8, false ), 'time' => current_time( 'Y-m-d H:i' ), 'chat' => 0, 'name' => $name, 'user' => '(سایت)', 'phone' => $phone, 'note' => $note );
+		update_option( self::LEADS, array_slice( $l, -300 ), false );
+		if ( $s['bot_admin'] && $s['bot_token'] ) {
+			$this->tg( 'sendMessage', array( 'chat_id' => $s['bot_admin'], 'parse_mode' => 'HTML', 'text' =>
+				"📩 <b>درخواست کارشناس (از چت‌بات سایت)</b>\n👤 " . esc_html( $name ) . "\n📞 " . esc_html( $phone ) . "\n📝 " . esc_html( $note ) ) );
+		}
+	}
+
 	private function save_lead( $from, $chat, $note, $phone ) {
 		$s    = $this->s();
 		$name = trim( ( $from['first_name'] ?? '' ) . ' ' . ( $from['last_name'] ?? '' ) );
@@ -642,7 +728,8 @@ class CAP_Bot {
 		if ( empty( $s['bot_enabled'] ) || ! $s['bot_token'] ) {
 			return new WP_REST_Response( array( 'ok' => false ), 200 );
 		}
-		if ( ! hash_equals( $this->secret(), (string) $request->get_header( 'x_telegram_bot_api_secret_token' ) ) ) {
+		$ok = hash_equals( $this->secret(), (string) $request->get_header( 'x_telegram_bot_api_secret_token' ) ) || hash_equals( $this->secret(), (string) $request->get_param( 'k' ) );
+		if ( ! $ok ) {
 			return new WP_REST_Response( array( 'ok' => false ), 403 );
 		}
 		$u = $request->get_json_params();
