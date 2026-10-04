@@ -32,6 +32,9 @@ class CAP_Channel_Auto_Poster {
 		add_action( 'cap_send_post', array( $this, 'send_post' ) );
 		add_action( 'admin_post_cap_test', array( $this, 'handle_test' ) );
 		add_action( 'admin_post_cap_resend', array( $this, 'handle_resend' ) );
+		add_action( 'admin_post_cap_manual', array( $this, 'handle_manual' ) );
+		add_filter( 'post_row_actions', array( $this, 'row_action' ), 10, 2 );
+		add_action( 'admin_notices', array( $this, 'post_notice' ) );
 	}
 
 	/* ---------------------------------------------------------------- تنظیمات */
@@ -125,6 +128,32 @@ class CAP_Channel_Auto_Poster {
 			</form>
 
 			<hr>
+			<h2>ارسال دستی</h2>
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+				<input type="hidden" name="action" value="cap_manual">
+				<?php wp_nonce_field( 'cap_manual' ); ?>
+				<table class="form-table">
+					<tr><th>ارسال یک مقاله</th><td>
+						<select name="post_id">
+							<option value="0">— انتخاب مقاله (اختیاری) —</option>
+							<?php foreach ( get_posts( array( 'numberposts' => 40, 'post_type' => (array) $s['post_types'], 'post_status' => 'publish' ) ) as $p ) : ?>
+								<option value="<?php echo (int) $p->ID; ?>"><?php echo esc_html( get_the_title( $p ) ); ?></option>
+							<?php endforeach; ?>
+						</select>
+					</td></tr>
+					<tr><th>یا پیام دلخواه</th><td>
+						<textarea name="custom_text" rows="5" class="large-text" placeholder="متن پیام (تگ‌های &lt;b&gt; &lt;i&gt; &lt;a&gt; مجاز است). اگر مقاله انتخاب شده باشد، این فیلد نادیده گرفته می‌شود."></textarea>
+						<p><input type="url" name="custom_image" class="regular-text" style="direction:ltr" placeholder="آدرس تصویر (اختیاری)"></p>
+					</td></tr>
+					<tr><th>ارسال به</th><td>
+						<label><input type="checkbox" name="targets[]" value="telegram" checked> تلگرام</label>
+						<label style="margin-right:12px"><input type="checkbox" name="targets[]" value="bale" checked> بله</label>
+					</td></tr>
+				</table>
+				<?php submit_button( '📤 ارسال همین الان', 'primary' ); ?>
+			</form>
+
+			<hr>
 			<h2>تست اتصال</h2>
 			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
 				<input type="hidden" name="action" value="cap_test">
@@ -149,10 +178,12 @@ class CAP_Channel_Auto_Poster {
 		echo '<label><input type="checkbox" name="cap_skip" value="1" ' . checked( get_post_meta( $post->ID, self::META_SKIP, true ), '1', false ) . '> برای این نوشته ارسال نشود</label>';
 		if ( $sent ) {
 			echo '<p>✅ ارسال شده در ' . esc_html( $sent ) . '</p>';
-			if ( 'publish' === $post->post_status ) {
-				$url = wp_nonce_url( admin_url( 'admin-post.php?action=cap_resend&post=' . $post->ID ), 'cap_resend_' . $post->ID );
-				echo '<p><a class="button" href="' . esc_url( $url ) . '">ارسال مجدد</a></p>';
-			}
+		}
+		if ( 'publish' === $post->post_status ) {
+			$url = wp_nonce_url( admin_url( 'admin-post.php?action=cap_resend&post=' . $post->ID ), 'cap_resend_' . $post->ID );
+			echo '<p><a class="button button-primary" href="' . esc_url( $url ) . '">📤 ' . ( $sent ? 'ارسال مجدد' : 'ارسال دستی به کانال' ) . '</a></p>';
+		} else {
+			echo '<p class="description">پس از انتشار، دکمه ارسال دستی اینجا نمایش داده می‌شود.</p>';
 		}
 	}
 
@@ -192,7 +223,7 @@ class CAP_Channel_Auto_Poster {
 		}
 	}
 
-	public function send_post( $post_id ) {
+	public function send_post( $post_id, $only = array() ) {
 		$post = get_post( $post_id );
 		if ( ! $post || 'publish' !== $post->post_status ) {
 			return array();
@@ -205,10 +236,10 @@ class CAP_Channel_Auto_Poster {
 		}
 
 		$results = array();
-		if ( $s['tg_enabled'] && $s['tg_token'] && $s['tg_chat'] ) {
+		if ( ( $only ? in_array( 'telegram', $only, true ) : $s['tg_enabled'] ) && $s['tg_token'] && $s['tg_chat'] ) {
 			$results['telegram'] = $this->send( 'telegram', $s['tg_token'], $s['tg_chat'], $caption, $image );
 		}
-		if ( $s['bl_enabled'] && $s['bl_token'] && $s['bl_chat'] ) {
+		if ( ( $only ? in_array( 'bale', $only, true ) : $s['bl_enabled'] ) && $s['bl_token'] && $s['bl_chat'] ) {
 			$results['bale'] = $this->send( 'bale', $s['bl_token'], $s['bl_chat'], $caption, $image );
 		}
 
@@ -310,15 +341,76 @@ class CAP_Channel_Auto_Poster {
 		$this->back( $out ? implode( ' | ', $out ) : 'ابتدا توکن و شناسه کانال را ذخیره کنید.' );
 	}
 
+	private function format_results( $results ) {
+		if ( ! $results ) {
+			return 'هیچ کانالی تنظیم نشده است (توکن و شناسه کانال را ذخیره کنید).';
+		}
+		$names = array( 'telegram' => 'تلگرام', 'bale' => 'بله' );
+		$out   = array();
+		foreach ( $results as $k => $r ) {
+			$out[] = $names[ $k ] . ': ' . ( true === $r ? 'موفق ✅' : 'خطا — ' . $r );
+		}
+		return implode( ' | ', $out );
+	}
+
+	private function targets() {
+		$t = isset( $_POST['targets'] ) ? array_intersect( (array) $_POST['targets'], array( 'telegram', 'bale' ) ) : array(); // phpcs:ignore
+		return array_values( $t );
+	}
+
+	public function row_action( $actions, $post ) {
+		if ( 'publish' === $post->post_status && current_user_can( 'edit_post', $post->ID ) && in_array( $post->post_type, (array) $this->settings()['post_types'], true ) ) {
+			$url = wp_nonce_url( admin_url( 'admin-post.php?action=cap_resend&post=' . $post->ID ), 'cap_resend_' . $post->ID );
+			$actions['cap_send'] = '<a href="' . esc_url( $url ) . '">📤 ارسال به کانال</a>';
+		}
+		return $actions;
+	}
+
+	public function post_notice() {
+		if ( isset( $_GET['cap_msg'] ) && ! isset( $_GET['page'] ) ) { // phpcs:ignore
+			echo '<div class="notice notice-info is-dismissible"><p>' . esc_html( wp_unslash( $_GET['cap_msg'] ) ) . '</p></div>'; // phpcs:ignore
+		}
+	}
+
 	public function handle_resend() {
 		$id = isset( $_GET['post'] ) ? (int) $_GET['post'] : 0;
 		check_admin_referer( 'cap_resend_' . $id );
 		if ( ! current_user_can( 'edit_post', $id ) ) {
 			wp_die( 'دسترسی ندارید' );
 		}
-		$this->send_post( $id );
-		wp_safe_redirect( get_edit_post_link( $id, 'raw' ) );
+		$res = $this->send_post( $id );
+		$to  = wp_get_referer() ? wp_get_referer() : get_edit_post_link( $id, 'raw' );
+		wp_safe_redirect( add_query_arg( 'cap_msg', rawurlencode( $this->format_results( $res ) ), $to ) );
 		exit;
+	}
+
+	public function handle_manual() {
+		check_admin_referer( 'cap_manual' );
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( 'دسترسی ندارید' );
+		}
+		$targets = $this->targets();
+		if ( ! $targets ) {
+			$this->back( 'حداقل یک مقصد (تلگرام یا بله) را انتخاب کنید.' );
+		}
+		$post_id = (int) ( $_POST['post_id'] ?? 0 ); // phpcs:ignore
+		if ( $post_id ) {
+			$this->back( $this->format_results( $this->send_post( $post_id, $targets ) ) );
+		}
+		$text = isset( $_POST['custom_text'] ) ? wp_kses( wp_unslash( $_POST['custom_text'] ), array( 'b' => array(), 'i' => array(), 'u' => array(), 'a' => array( 'href' => array() ), 'code' => array() ) ) : ''; // phpcs:ignore
+		$img  = isset( $_POST['custom_image'] ) ? esc_url_raw( wp_unslash( $_POST['custom_image'] ) ) : ''; // phpcs:ignore
+		if ( '' === trim( $text ) ) {
+			$this->back( 'یک مقاله انتخاب کنید یا متن پیام را بنویسید.' );
+		}
+		$s       = $this->settings();
+		$results = array();
+		if ( in_array( 'telegram', $targets, true ) && $s['tg_token'] && $s['tg_chat'] ) {
+			$results['telegram'] = $this->send( 'telegram', $s['tg_token'], $s['tg_chat'], $text, $img );
+		}
+		if ( in_array( 'bale', $targets, true ) && $s['bl_token'] && $s['bl_chat'] ) {
+			$results['bale'] = $this->send( 'bale', $s['bl_token'], $s['bl_chat'], $text, $img );
+		}
+		$this->back( $this->format_results( $results ) );
 	}
 }
 
