@@ -339,20 +339,20 @@ class CAP_Widget {
 #capw-btn::after{animation-delay:1.4s}
 #capw-btn:hover{transform:translateY(-6px) scale(1.12);box-shadow:0 18px 38px rgba(0,0,0,.4),inset 0 2px 0 rgba(255,255,255,.5);animation-play-state:paused}
 #capw-btn:active{transform:scale(.94)}
-#capw-btn .bot{width:42px;height:42px;transition:transform .4s cubic-bezier(.34,1.56,.64,1)}
+#capw-btn .bot{width:46px;height:46px;transition:transform .4s cubic-bezier(.34,1.56,.64,1)}
 #capw-btn:hover .bot{transform:rotate(-10deg) scale(1.08)}
-#capw-btn .lbl{position:absolute;left:80px;top:50%;transform:translate(-10px,-50%) scale(.9);transform-origin:left center;white-space:nowrap;background:linear-gradient(135deg,var(--c),var(--d));color:#fff;padding:9px 18px;border-radius:999px;font-size:14px;font-weight:700;box-shadow:0 8px 20px rgba(0,0,0,.25);opacity:0;pointer-events:none;transition:opacity .22s,transform .3s cubic-bezier(.34,1.56,.64,1)}
-#capw-btn:hover .lbl{opacity:1;transform:translate(0,-50%) scale(1)}
 #capw-btn .dot{position:absolute;top:0;right:0;min-width:20px;height:20px;border-radius:50%;background:#ef4444;border:2px solid #fff;font-size:11px;font-weight:700;line-height:16px;text-align:center;animation:capw-bounce 1.6s infinite}
 @keyframes capw-float{0%,100%{translate:0 0}50%{translate:0 -5px}}
 @keyframes capw-ring{0%{transform:scale(1);opacity:.45}80%,100%{transform:scale(1.85);opacity:0}}
 @keyframes capw-bounce{0%,100%{transform:scale(1)}50%{transform:scale(1.2)}}
 .bot .eye{transform-box:fill-box;transform-origin:center;animation:capw-blink 4.2s infinite}
 .bot .ant{animation:capw-glow 1.6s ease-in-out infinite}
-.bot .arm{transform-box:fill-box;transform-origin:50% 100%;animation:capw-wave 2.8s ease-in-out infinite}
+.bot .car{transform-box:fill-box;transform-origin:50% 100%;animation:capw-drive 1.3s ease-in-out infinite}
+.bot .hl{animation:capw-hl 1.8s ease-in-out infinite}
 @keyframes capw-blink{0%,92%,100%{transform:scaleY(1)}96%{transform:scaleY(.1)}}
 @keyframes capw-glow{0%,100%{opacity:.5}50%{opacity:1}}
-@keyframes capw-wave{0%,60%,100%{transform:rotate(0)}70%{transform:rotate(-18deg)}80%{transform:rotate(10deg)}90%{transform:rotate(-12deg)}}
+@keyframes capw-drive{0%,100%{transform:translateY(0)}50%{transform:translateY(-1.2px)}}
+@keyframes capw-hl{0%,100%{opacity:.75}50%{opacity:1;filter:drop-shadow(0 0 2px #fde047)}}
 /* ---------- حباب سلام ---------- */
 #capw-hi{position:fixed;left:100px;bottom:38px;z-index:99997;max-width:240px;background:var(--bub);color:var(--tx);backdrop-filter:blur(12px);border:1px solid var(--bd);border-radius:18px 18px 18px 4px;padding:11px 16px;font-size:13.5px;line-height:1.75;box-shadow:0 12px 30px rgba(0,0,0,.22);cursor:pointer;opacity:0;transform:translateY(10px) scale(.92);pointer-events:none;transition:opacity .35s,transform .45s cubic-bezier(.34,1.56,.64,1)}
 #capw-hi.show{opacity:1;transform:none;pointer-events:auto}
@@ -368,7 +368,7 @@ class CAP_Widget {
 @keyframes capw-aurora{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
 #capw header .av{position:relative;width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,.22);display:grid;place-items:center;flex:none;box-shadow:inset 0 0 0 2px rgba(255,255,255,.4)}
 #capw header .av .bot{width:36px;height:36px}
-#capw header .av::after{content:"";position:absolute;bottom:1px;left:1px;width:12px;height:12px;border-radius:50%;background:#4ade80;border:2px solid #fff}
+#capw header .av::after{content:"";position:absolute;top:0;left:0;width:12px;height:12px;border-radius:50%;background:#4ade80;border:2px solid #fff}
 #capw header .tt{flex:1;line-height:1.35;position:relative;z-index:1}#capw header .tt b{display:block;font-size:16px}#capw header .tt small{opacity:.92;font-size:12px}
 #capw header button{position:relative;z-index:1;background:rgba(255,255,255,.2);border:0;color:#fff;border-radius:50%;width:34px;height:34px;cursor:pointer;font-size:15px;transition:background .2s,transform .25s}
 #capw header button:hover{background:rgba(255,255,255,.38);transform:rotate(10deg) scale(1.08)}
@@ -424,21 +424,27 @@ class CAP_Widget {
 </style>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
 <symbol id="capw-bot" viewBox="0 0 48 48">
-	<line x1="24" y1="4" x2="24" y2="10" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
-	<circle class="ant" cx="24" cy="4" r="3" fill="#fde047"/>
-	<rect x="7" y="10" width="34" height="27" rx="12" fill="#fff"/>
-	<rect x="11" y="15" width="26" height="17" rx="8" fill="#1e293b"/>
-	<ellipse class="eye" cx="18.5" cy="23" rx="3" ry="3.6" fill="#67e8f9"/>
-	<ellipse class="eye" cx="29.5" cy="23" rx="3" ry="3.6" fill="#67e8f9"/>
-	<path d="M20 29q4 3 8 0" stroke="#67e8f9" stroke-width="1.8" fill="none" stroke-linecap="round"/>
-	<circle cx="10" cy="26" r="2" fill="#fda4af" opacity=".9"/><circle cx="38" cy="26" r="2" fill="#fda4af" opacity=".9"/>
-	<path d="M14 38q10 8 20 0" fill="#fff"/>
+	<g class="car">
+		<line x1="24" y1="3.5" x2="24" y2="9" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+		<circle class="ant" cx="24" cy="3.5" r="2.6" fill="#fde047"/>
+		<circle cx="6" cy="18" r="2.4" fill="#e2e8f0"/><circle cx="42" cy="18" r="2.4" fill="#e2e8f0"/>
+		<rect x="9" y="8" width="30" height="19" rx="10" fill="#fff"/>
+		<rect x="12" y="11" width="24" height="12.5" rx="6" fill="#1e293b"/>
+		<ellipse class="eye" cx="19" cy="16.4" rx="2.6" ry="3" fill="#67e8f9"/>
+		<ellipse class="eye" cx="29" cy="16.4" rx="2.6" ry="3" fill="#67e8f9"/>
+		<path d="M21 20.6q3 2.2 6 0" stroke="#67e8f9" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+		<rect x="4" y="25" width="40" height="14" rx="6" fill="#fff"/>
+		<circle class="hl" cx="11" cy="31" r="3.4" fill="#fde047"/><circle class="hl" cx="37" cy="31" r="3.4" fill="#fde047"/>
+		<rect x="17.5" y="28.5" width="13" height="6.5" rx="2.2" fill="#cbd5e1"/>
+		<path d="M20 30.5h8M20 33h8" stroke="#94a3b8" stroke-width="1" stroke-linecap="round"/>
+		<rect x="6" y="37" width="36" height="3.4" rx="1.7" fill="#94a3b8"/>
+		<rect x="6" y="38" width="7.5" height="7" rx="2.2" fill="#0f172a"/><rect x="34.5" y="38" width="7.5" height="7" rx="2.2" fill="#0f172a"/>
+	</g>
 </symbol></defs></svg>
 <div id="capw-root">
 <button id="capw-btn" type="button" aria-label="<?php echo esc_attr( $cfg['title'] ); ?>">
 	<svg class="bot" aria-hidden="true"><use href="#capw-bot"/></svg>
 	<span class="dot" id="capw-dot">1</span>
-	<span class="lbl"><?php echo esc_html( $cfg['title'] ); ?> ✨</span>
 </button>
 <div id="capw-hi"><b id="capw-hix">✕</b><span class="wv">👋</span> سلام! برای انتخاب قطعه مناسب خودرو کمک می‌خواهید؟</div>
 <div id="capw" role="dialog" aria-label="<?php echo esc_attr( $cfg['title'] ); ?>">
